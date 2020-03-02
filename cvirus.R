@@ -31,6 +31,7 @@ names(datRec) <- c('Province/State','Country/Region','Lat','Long','Last Update',
 names(datDea) <- c('Province/State','Country/Region','Lat','Long','Last Update','Death')
 
 dat <- as.data.table(cbind(datConf,select(datRec,Recovered),select(datDea,Death)))
+dat[, Existing := Confirmed - Recovered - Death]
 
 dat <- select(dat,setdiff(names(dat),c('First confirmed date in country (Est.)','Lat','Long')))
 
@@ -81,146 +82,63 @@ dat %>%
   distinct %>%
   as.data.table()
 
-str(dat)
+
+# Plot Functions
+
+plotDat <- function(country,province ){
+  dat %>% 
+    filter(grepl(country,`Country/Region`) & grepl(province,`Province/State`))  %>%
+    group_by(`Province/State`, d = day(`Last Update`)) %>% 
+    filter(`Last Update` == max(`Last Update`)) %>%
+    ggplot(aes(x = `Last Update`))+
+    geom_line(aes(y=Confirmed, color = "Infected"))+
+    geom_line(aes(y=Existing, color = "Existing"))+
+    geom_line(aes(y=Recovered, color = "Recovered"))+
+    geom_line(aes(y=Death, color = "Death"))+
+    
+    geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
+    geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
+    geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
+    geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
+    
+    ylab(label="Count")+
+    xlab(label="Date")+
+    theme(legend.justification=c(1,0), legend.position=c(0.25,0.5))+
+    theme(legend.title=element_text(size=12,face="bold"),
+          legend.background = element_rect(fill='#FFFFFF',
+                                           size=0.5,linetype="solid"),
+          legend.text=element_text(size=10),
+          legend.key=element_rect(colour="#FFFFFF",
+                                  fill='#C2C2C2',
+                                  size=0.25,
+                                  linetype="solid"))+
+    scale_colour_manual("Compartments",
+                        breaks=c("Infected","Existing","Recovered","Death"),
+                        values=c("blue","red","green","black"))+
+    labs(title = "Wuhan Coronavirus(2019-nCoV)",
+         subtitle = paste(province,country,sep =" "))
+  
+  
+}
+
+plotDat('China','Shanghai')
 
 # data is pulled at multiple times, but is a cumlative sum by province  / country
 # Shanghai 
 
-dat %>% 
-  filter(grepl('China',`Country/Region`) & grepl('Shanghai',`Province/State`))  %>%
-  group_by(`Province/State`, d = day(`Last Update`)) %>% 
-  filter(`Last Update` == max(`Last Update`)) %>%
-  ggplot(aes(x = `Last Update`))+
-      geom_line(aes(y=Confirmed, color = "Infected"))+
-      #geom_line(aes(y=Suspected, color = "Suspected"))+
-      geom_line(aes(y=Recovered, color = "Recovered"))+
-      geom_line(aes(y=Death, color = "Death"))+
-  
-      geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
-      #geom_point(size = I(3), shape = 1,aes(y=Suspected, color = "Suspected"))+
-      geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
-      geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
-  
-      ylab(label="Count")+
-      xlab(label="Date")+
-      theme(legend.justification=c(1,0), legend.position=c(0.25,0.5))+
-      theme(legend.title=element_text(size=12,face="bold"),
-        legend.background = element_rect(fill='#FFFFFF',
-                                         size=0.5,linetype="solid"),
-        legend.text=element_text(size=10),
-        legend.key=element_rect(colour="#FFFFFF",
-                                fill='#C2C2C2',
-                                size=0.25,
-                                linetype="solid"))+
-        scale_colour_manual("Compartments",
-                      breaks=c("Infected","Suspected","Recovered","Death"),
-                      values=c("blue","red","green","black"))+
-        labs(title = "Wuhan Coronavirus(2019-nCoV)",
-        subtitle = "Shanghai, China")
-################################
-#  Boat
+plotDat('China','Shanghai')
 
-dat %>% 
-  filter(grepl('Other',`Country/Region`) & grepl('Diamond',`Province/State`))  %>%
-  group_by(`Province/State`, d = day(`Last Update`)) %>% 
-  filter(`Last Update` == max(`Last Update`)) %>%
-  ggplot(aes(x = `Last Update`))+
-  geom_line(aes(y=Confirmed, color = "Infected"))+
-  #geom_line(aes(y=Suspected, color = "Suspected"))+
-  geom_line(aes(y=Recovered, color = "Recovered"))+
-  geom_line(aes(y=Death, color = "Death"))+
-  
-  geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
-  #geom_point(size = I(3), shape = 1,aes(y=Suspected, color = "Suspected"))+
-  geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
-  geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
-  
-  ylab(label="Count")+
-  xlab(label="Date")+
-  theme(legend.justification=c(1,0), legend.position=c(0.25,0.5))+
-  theme(legend.title=element_text(size=12,face="bold"),
-        legend.background = element_rect(fill='#FFFFFF',
-                                         size=0.5,linetype="solid"),
-        legend.text=element_text(size=10),
-        legend.key=element_rect(colour="#FFFFFF",
-                                fill='#C2C2C2',
-                                size=0.25,
-                                linetype="solid"))+
-  scale_colour_manual("Compartments",
-                      breaks=c("Infected","Suspected","Recovered","Death"),
-                      values=c("blue","red","green","black"))+
-  labs(title = "Wuhan Coronavirus(2019-nCoV)",
-       subtitle = "Diamond Princess Cruise Ship, Yokohama, Japan")
-
+# The ship
+plotDat('Other','Diamond')
 
 # South Korea
+plotDat('Korea','')
 
-dat %>% 
-  filter(grepl('Korea',`Country/Region`) )  %>%
-  group_by(`Province/State`, d = day(`Last Update`)) %>% 
-  filter(`Last Update` == max(`Last Update`)) %>%
-  ggplot(aes(x = `Last Update`))+
-  geom_line(aes(y=Confirmed, color = "Infected"))+
-  #geom_line(aes(y=Suspected, color = "Suspected"))+
-  geom_line(aes(y=Recovered, color = "Recovered"))+
-  geom_line(aes(y=Death, color = "Death"))+
-  
-  geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
-  #geom_point(size = I(3), shape = 1,aes(y=Suspected, color = "Suspected"))+
-  geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
-  geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
-  
-  ylab(label="Count")+
-  xlab(label="Date")+
-  theme(legend.justification=c(1,0), legend.position=c(0.25,0.5))+
-  theme(legend.title=element_text(size=12,face="bold"),
-        legend.background = element_rect(fill='#FFFFFF',
-                                         size=0.5,linetype="solid"),
-        legend.text=element_text(size=10),
-        legend.key=element_rect(colour="#FFFFFF",
-                                fill='#C2C2C2',
-                                size=0.25,
-                                linetype="solid"))+
-  scale_colour_manual("Compartments",
-                      breaks=c("Infected","Suspected","Recovered","Death"),
-                      values=c("blue","red","green","black"))+
-  labs(title = "Wuhan Coronavirus(2019-nCoV)",
-       subtitle = "South Korea")
+# Hubei
+plotDat('China','Hubei')
 
-
-######## Hubei
-dat %>% 
-  filter(grepl('China',`Country/Region`) & grepl('Hubei',`Province/State`))  %>%
-  group_by(`Province/State`, d = day(`Last Update`)) %>% 
-  arrange(`Last Update`) %>%
-  filter(`Last Update` == max(`Last Update`)) %>%
-  ggplot(aes(x = `Last Update`))+
-  geom_line(aes(y=Confirmed, color = "Infected"))+
-  #geom_line(aes(y=Suspected, color = "Suspected"))+
-  geom_line(aes(y=Recovered, color = "Recovered"))+
-  geom_line(aes(y=Death, color = "Death"))+
-  
-  geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
-  #geom_point(size = I(3), shape = 1,aes(y=Suspected, color = "Suspected"))+
-  geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
-  geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
-  
-  ylab(label="Count")+
-  xlab(label="Date")+
-  theme(legend.justification=c(1,0), legend.position=c(0.25,0.5))+
-  theme(legend.title=element_text(size=12,face="bold"),
-        legend.background = element_rect(fill='#FFFFFF',
-                                         size=0.5,linetype="solid"),
-        legend.text=element_text(size=10),
-        legend.key=element_rect(colour="#FFFFFF",
-                                fill='#C2C2C2',
-                                size=0.25,
-                                linetype="solid"))+
-  scale_colour_manual("Compartments",
-                      breaks=c("Infected","Suspected","Recovered","Death"),
-                      values=c("blue","red","green","black"))+
-  labs(title = "Wuhan Coronavirus(2019-nCoV)",
-       subtitle = "Hubei Province, China")
+# Hubei
+plotDat('United','')
 
 # plot of top 10 provinces 
 # get the names of the 10 provinces
@@ -290,12 +208,12 @@ dat %>%
   mutate(Date = ymd(paste(y,m,d))) %>%
   ggplot(aes(x = Date))+
   geom_line(aes(y=Confirmed, color = "Infected"))+
-  #geom_line(aes(y=Suspected, color = "Suspected"))+
+  geom_line(aes(y=Existing, color = "Existing"))+
   geom_line(aes(y=Recovered, color = "Recovered"))+
   geom_line(aes(y=Death, color = "Death"))+
   
   geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
-  #geom_point(size = I(3), shape = 1,aes(y=Suspected, color = "Suspected"))+
+  geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
   geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
   geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
   
@@ -311,7 +229,7 @@ dat %>%
                                 size=0.25,
                                 linetype="solid"))+
   scale_colour_manual("Compartments",
-                      breaks=c("Infected","Suspected","Recovered","Death"),
+                      breaks=c("Infected","Existing","Recovered","Death"),
                       values=c("blue","red","green","black"))+
   labs(title = "Wuhan Coronavirus(2019-nCoV",
        subtitle = "Mainland China")
@@ -427,15 +345,25 @@ dat %>%
 mapDat
 
 
-#library(mapview)
-#library(IRdisplay)
-#mapshot(mapDat, url = paste0(getwd(), "/map.jpg"))
-#display_html(file = paste0(getwd(), "/map.html"))
+mapDat =
+  dat %>% 
+  filter(grepl('China',`Country/Region`))  %>%
+  group_by(`Province/State`)  %>% 
+  filter(`Last Update` == max(`Last Update`)) %>%
+  left_join(provinceCoord, by = c('Province/State' = 'Province')) %>%
+  select(`Province/State`,lng,lat,Existing) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~log(Existing) * 20000, 
+             popup = ~`Province/State`,
+             label = ~Existing) %>%
+  addPopups(lng=121.4, lat=50, paste(sep = "<br/>", "Scroll over the circle to see the existing count","Click the circle to see the provice name"),
+            options = popupOptions(closeButton = FALSE)) %>%
+  addPopups(lng=90, lat=50, paste(sep = "<br/>", "<b>Wuhan Coronavirus(2019-nCoV</b>","Existing Infection Counts By Province",max(dat$`Last Update`)),
+            options = popupOptions(closeButton = FALSE))
 
-#library(IRdisplay)
-#htmlwidgets::saveWidget(mapDat, "m.html")
-#display_html('<iframe src="m.html" width=100% height=450></iframe>')
-
+mapDat
 
 
 
