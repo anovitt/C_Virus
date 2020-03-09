@@ -114,14 +114,52 @@ plotDat <- function(country,province ){
                                   linetype="solid"))+
     scale_colour_manual("Compartments",
                         breaks=c("Infected","Existing","Recovered","Death"),
-                        values=c("blue","red","green","black"))+
+                        values=c("blue","red","dark green","black"))+
     labs(title = "Wuhan Coronavirus(2019-nCoV)",
          subtitle = paste(province,country,sep =" "))
-  
-  
 }
 
-plotDat('China','Shanghai')
+plotDatContry <- function(country ){
+  dat %>% 
+    filter(grepl(country,`Country/Region`) )  %>%
+    #filter(`Country/Region` == 'US') %>%
+    
+    group_by(`Province/State`, d = day(`Last Update`))  %>% 
+    filter(`Last Update` == max(`Last Update`)) %>%
+    group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
+    summarise_if(is.numeric,sum) %>%
+    mutate(Date = ymd(paste(y,m,d))) %>%
+    
+    
+    ggplot(aes(x = `Date`))+
+    geom_line(aes(y=Confirmed, color = "Infected"))+
+    geom_line(aes(y=Existing, color = "Existing"))+
+    geom_line(aes(y=Recovered, color = "Recovered"))+
+    geom_line(aes(y=Death, color = "Death"))+
+    
+    geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
+    geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
+    geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
+    geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
+    
+    ylab(label="Count")+
+    xlab(label="Date")+
+    theme(legend.justification=c(1,0), legend.position=c(0.25,0.5))+
+    theme(legend.title=element_text(size=12,face="bold"),
+          legend.background = element_rect(fill='#FFFFFF',
+                                           size=0.5,linetype="solid"),
+          legend.text=element_text(size=10),
+          legend.key=element_rect(colour="#FFFFFF",
+                                  fill='#C2C2C2',
+                                  size=0.25,
+                                  linetype="solid"))+
+    scale_colour_manual("Compartments",
+                        breaks=c("Infected","Existing","Recovered","Death"),
+                        values=c("blue","red","dark green","black"))+
+    labs(title = "Wuhan Coronavirus(2019-nCoV)",
+         subtitle = paste(country,sep =" "))
+}
+
 
 # data is pulled at multiple times, but is a cumlative sum by province  / country
 # Shanghai 
@@ -137,8 +175,13 @@ plotDat('Korea','')
 # Hubei
 plotDat('China','Hubei')
 
-# Hubei
-plotDat('United','')
+# USA
+plotDatContry('US')
+#China
+plotDatContry('China')
+
+plotDatContry('Japan')
+
 
 # plot of top 10 provinces 
 # get the names of the 10 provinces
@@ -196,43 +239,6 @@ dat %>%
   labs(title = "Wuhan Coronavirus(2019-nCoV)",
        subtitle = "Confirmed Cases Shanghai and Beijing")
 
-# Summing all Provances by the last reported data of each day.
-# Plot all mainland 
-
-dat %>% 
-  filter(grepl('China',`Country/Region`)& grepl('Main',`Country/Region`))  %>%
-  group_by(`Province/State`, d = day(`Last Update`))  %>% 
-  filter(`Last Update` == max(`Last Update`)) %>%
-  group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
-  summarise_if(is.numeric,sum) %>%
-  mutate(Date = ymd(paste(y,m,d))) %>%
-  ggplot(aes(x = Date))+
-  geom_line(aes(y=Confirmed, color = "Infected"))+
-  geom_line(aes(y=Existing, color = "Existing"))+
-  geom_line(aes(y=Recovered, color = "Recovered"))+
-  geom_line(aes(y=Death, color = "Death"))+
-  
-  geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
-  geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
-  geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
-  geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
-  
-  ylab(label="Count")+
-  xlab(label="Date")+
-  theme(legend.justification=c(1,0), legend.position=c(0.25,0.5))+
-  theme(legend.title=element_text(size=12,face="bold"),
-        legend.background = element_rect(fill='#FFFFFF',
-                                         size=0.5,linetype="solid"),
-        legend.text=element_text(size=10),
-        legend.key=element_rect(colour="#FFFFFF",
-                                fill='#C2C2C2',
-                                size=0.25,
-                                linetype="solid"))+
-  scale_colour_manual("Compartments",
-                      breaks=c("Infected","Existing","Recovered","Death"),
-                      values=c("blue","red","green","black"))+
-  labs(title = "Wuhan Coronavirus(2019-nCoV",
-       subtitle = "Mainland China")
 
 # plot removing China
 top_10 =
