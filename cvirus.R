@@ -33,6 +33,8 @@ names(datDea) <- c('Province/State','Country/Region','Lat','Long','Last Update',
 dat <- as.data.table(cbind(datConf,select(datRec,Recovered),select(datDea,Death)))
 dat[, Existing := Confirmed - Recovered - Death]
 
+datLatLonMap <- select(dat,c('Province/State','Country/Region','Lat','Long'))
+
 dat <- select(dat,setdiff(names(dat),c('First confirmed date in country (Est.)','Lat','Long')))
 
 datFlu <- fread("R/2019-coronavirus-dataset-01212020-01262020/flu.csv")
@@ -82,14 +84,16 @@ dat %>%
   distinct %>%
   as.data.table()
 
-
+dat %>%
+  filter((grepl('China',`Country/Region`)))
 # Plot Functions
 
 plotDat <- function(country,province ){
   dat %>% 
     filter(grepl(country,`Country/Region`) & grepl(province,`Province/State`))  %>%
-    group_by(`Province/State`, d = day(`Last Update`)) %>% 
-    filter(`Last Update` == max(`Last Update`)) %>%
+    group_by(`Province/State`) %>% 
+    #group_by(`Province/State`, d = day(`Last Update`)) %>% 
+    #filter(`Last Update` == max(`Last Update`)) %>%
     ggplot(aes(x = `Last Update`))+
     geom_line(aes(y=Confirmed, color = "Infected"))+
     geom_line(aes(y=Existing, color = "Existing"))+
@@ -103,7 +107,7 @@ plotDat <- function(country,province ){
     
     ylab(label="Count")+
     xlab(label="Date")+
-    theme(legend.justification=c(1,0), legend.position=c(0.25,0.5))+
+    theme(legend.justification=c(1,0), legend.position=c(0.25,0.75))+
     theme(legend.title=element_text(size=12,face="bold"),
           legend.background = element_rect(fill='#FFFFFF',
                                            size=0.5,linetype="solid"),
@@ -114,22 +118,18 @@ plotDat <- function(country,province ){
                                   linetype="solid"))+
     scale_colour_manual("Compartments",
                         breaks=c("Infected","Existing","Recovered","Death"),
-                        values=c("blue","red","dark green","black"))+
+                        values=c("green","red","blue","black"))+
     labs(title = "Wuhan Coronavirus(2019-nCoV)",
          subtitle = paste(province,country,sep =" "))
 }
 
 plotDatContry <- function(country ){
   dat %>% 
-    filter(grepl(country,`Country/Region`) )  %>%
-    #filter(`Country/Region` == 'US') %>%
-    
-    group_by(`Province/State`, d = day(`Last Update`))  %>% 
-    filter(`Last Update` == max(`Last Update`)) %>%
-    group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
+    filter(grepl(country,`Country/Region`) & !grepl('county',`Province/State`) )  %>%
+    group_by(`Province/State`) %>% 
+    group_by( d= day(`Last Update`), m = month(`Last Update`),y=year(`Last Update`)) %>%
     summarise_if(is.numeric,sum) %>%
     mutate(Date = ymd(paste(y,m,d))) %>%
-    
     
     ggplot(aes(x = `Date`))+
     geom_line(aes(y=Confirmed, color = "Infected"))+
@@ -144,7 +144,7 @@ plotDatContry <- function(country ){
     
     ylab(label="Count")+
     xlab(label="Date")+
-    theme(legend.justification=c(1,0), legend.position=c(0.25,0.5))+
+    theme(legend.justification=c(1,0), legend.position=c(0.25,0.75))+
     theme(legend.title=element_text(size=12,face="bold"),
           legend.background = element_rect(fill='#FFFFFF',
                                            size=0.5,linetype="solid"),
@@ -155,19 +155,90 @@ plotDatContry <- function(country ){
                                   linetype="solid"))+
     scale_colour_manual("Compartments",
                         breaks=c("Infected","Existing","Recovered","Death"),
-                        values=c("blue","red","dark green","black"))+
+                        values=c("green","red","blue","black"))+
     labs(title = "Wuhan Coronavirus(2019-nCoV)",
          subtitle = paste(country,sep =" "))
 }
 
+plotDatContryUSA <- function(){
+dat %>%
+  filter(`Country/Region` == 'US' & !grepl('County',`Province/State`) & !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1))) %>%
+    group_by(`Province/State` )  %>% 
+    group_by( d= day(`Last Update`), m = month(`Last Update`),y=year(`Last Update`)) %>%
+    summarise_if(is.numeric,sum) %>%
+    mutate(Date = ymd(paste(y,m,d))) %>%
+    
+    ggplot(aes(x = `Date`))+
+    geom_line(aes(y=Confirmed, color = "Infected"))+
+    geom_line(aes(y=Existing, color = "Existing"))+
+    geom_line(aes(y=Recovered, color = "Recovered"))+
+    geom_line(aes(y=Death, color = "Death"))+
+    geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
+    geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
+    geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
+    geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
+    
+    ylab(label="Count")+
+    xlab(label="Date")+
+    theme(legend.justification=c(1,0), legend.position=c(0.25,0.75))+
+    theme(legend.title=element_text(size=12,face="bold"),
+          legend.background = element_rect(fill='#FFFFFF',
+                                           size=0.5,linetype="solid"),
+          legend.text=element_text(size=10),
+          legend.key=element_rect(colour="#FFFFFF",
+                                  fill='#C2C2C2',
+                                  size=0.25,
+                                  linetype="solid"))+
+    scale_colour_manual("Compartments",
+                        breaks=c("Infected","Existing","Recovered","Death"),
+                        values=c("green","red","blue","black"))+
+    labs(title = "Wuhan Coronavirus(2019-nCoV)",
+         subtitle = paste("United States Of America",sep =" "))
+}
 
+plotDatContryUSAState <- function(state){
+  dat %>%
+    filter(`Country/Region` == 'US'& !grepl('County',`Province/State`) & grepl(state,`Province/State`) & !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1))) %>%
+    group_by(`Province/State`)  %>% 
+    #filter(`Last Update` == max(`Last Update`)) %>%
+    #group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
+    #summarise_if(is.numeric,sum) %>%
+    #mutate(Date = ymd(paste(y,m,d))) %>%
+    
+    
+    ggplot(aes(x = `Last Update`))+
+    geom_line(aes(y=Confirmed, color = "Infected"))+
+    geom_line(aes(y=Existing, color = "Existing"))+
+    geom_line(aes(y=Recovered, color = "Recovered"))+
+    geom_line(aes(y=Death, color = "Death"))+
+    
+    geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
+    geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
+    geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
+    geom_point(size = I(3), shape = 1,aes(y=Death, color = "Death"))+
+    
+    ylab(label="Count")+
+    xlab(label="Date")+
+    theme(legend.justification=c(1,0), legend.position=c(0.25,0.75))+
+    theme(legend.title=element_text(size=12,face="bold"),
+          legend.background = element_rect(fill='#FFFFFF',
+                                           size=0.5,linetype="solid"),
+          legend.text=element_text(size=10),
+          legend.key=element_rect(colour="#FFFFFF",
+                                  fill='#C2C2C2',
+                                  size=0.25,
+                                  linetype="solid"))+
+    scale_colour_manual("Compartments",
+                        breaks=c("Infected","Existing","Recovered","Death"),
+                        values=c("green","red","blue","black"))+
+    labs(title = "Wuhan Coronavirus(2019-nCoV)",
+         subtitle = paste("United States Of America",state,sep =" "))
+}
+  
+ 
 # data is pulled at multiple times, but is a cumlative sum by province  / country
 # Shanghai 
-
 plotDat('China','Shanghai')
-
-# The ship
-plotDat('Other','Diamond')
 
 # South Korea
 plotDat('Korea','')
@@ -176,10 +247,16 @@ plotDat('Korea','')
 plotDat('China','Hubei')
 
 # USA
-plotDatContry('US')
+plotDatContryUSA()
+
+plotDatContryUSAState('California')
+plotDatContryUSAState('New York')
+plotDatContryUSAState('Michigan')
+
 #China
 plotDatContry('China')
 
+# Japan
 plotDatContry('Japan')
 
 
@@ -195,8 +272,6 @@ dat %>%
 
 dat %>% 
   filter(grepl('China',`Country/Region`) & `Province/State` %in% top_10)  %>%
-  group_by(`Province/State`, d = day(`Last Update`)) %>% 
-  filter(`Last Update` == max(`Last Update`)) %>%
   ggplot(aes(x = `Last Update`, y= Confirmed, color = `Province/State`))+
   geom_line()+
   geom_point(size = I(3), shape = 1)+
@@ -204,6 +279,26 @@ dat %>%
   xlab(label="Date")+
   labs(title = "Wuhan Coronavirus(2019-nCoV)",
        subtitle = "Top 10 Confirmed Cases By Province, China")
+
+# top 10 US states
+top_10 =
+  dat %>% 
+  filter(`Country/Region` == 'US'& !grepl('County',`Province/State`)& !grepl('Princess',`Province/State`)& !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1))) %>%
+  #group_by(`Province/State`)  %>% 
+  #filter(grepl('US',`Country/Region`) & !grepl('County',`Province/State`) )%>%
+  filter(`Last Update` == max(`Last Update`)) %>%
+  top_n(10,Confirmed) %>%
+  pull(`Province/State`)
+
+dat %>% 
+  filter(grepl('US',`Country/Region`) & `Province/State` %in% top_10 & !grepl('County',`Province/State`) & !grepl('Princess',`Province/State`)& !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1)))  %>%
+  ggplot(aes(x = `Last Update`, y= Confirmed, color = `Province/State`))+
+  geom_line()+
+  geom_point(size = I(3), shape = 1)+
+  ylab(label="Count")+
+  xlab(label="Date")+
+  labs(title = "Wuhan Coronavirus(2019-nCoV)",
+       subtitle = "Top 10 Confirmed Cases By State, United States")
 
 # plot removing Hubei province
 top_13 =
@@ -215,8 +310,6 @@ top_13 =
 
 dat %>% 
   filter(grepl('China',`Country/Region`) & `Province/State` %in% top_13)  %>%
-  group_by(`Province/State`, d = day(`Last Update`)) %>% 
-  filter(`Last Update` == max(`Last Update`)) %>%
   ggplot(aes(x = `Last Update`, y= Confirmed, color = `Province/State`))+
   geom_line()+
   geom_point(size = I(3), shape = 1)+
@@ -243,8 +336,9 @@ dat %>%
 # plot removing China
 top_10 =
   dat %>% 
-  filter(!grepl('China',`Country/Region`)) %>%
+  filter(!grepl('China',`Country/Region`) & !grepl('Other',`Country/Region`)) %>%
   filter(`Last Update` == max(`Last Update`)) %>%
+  #group_by(`Country/Region`,`Last Update`) %>%
   top_n(10,Confirmed) %>%
   pull(`Country/Region`) 
 
@@ -260,13 +354,15 @@ dat %>%
   labs(title = "Wuhan Coronavirus(2019-nCoV)",
        subtitle = "Top 10 Confirmed Cases Outside China")
 
+
+
 ### 
 # Plot total case Conavirus vs. flu.
 
 
 datCVirFlu <-
 dat %>% 
-  filter(grepl('China',`Country/Region`)& grepl('Main',`Country/Region`))  %>%
+  #filter(grepl('China',`Country/Region`)& grepl('Main',`Country/Region`))  %>%
   group_by(`Province/State`, d = day(`Last Update`))  %>% 
   filter(`Last Update` == max(`Last Update`)) %>%
   group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
@@ -350,7 +446,7 @@ dat %>%
 
 mapDat
 
-
+## existing cases map
 mapDat =
   dat %>% 
   filter(grepl('China',`Country/Region`))  %>%
@@ -370,9 +466,34 @@ mapDat =
             options = popupOptions(closeButton = FALSE))
 
 mapDat
+####
+# USA maps
+
+datMap <-
+datLatLonMap %>%
+  filter(`Country/Region` == 'US' & !grepl('County',`Province/State`) & !grepl('Princess',`Province/State`)& !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1))) 
+names(datMap) <- c('Province/State','Country/Region','lat','lng')
+
+mapDat =
+  dat %>% 
+  filter(`Country/Region` == 'US' & !grepl('County',`Province/State`) & !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1)))  %>%
+  group_by(`Province/State`)  %>% 
+  filter(`Last Update` == max(`Last Update`)) %>%
+  left_join(datMap, by = c('Province/State' = 'Province/State','Country/Region' ='Country/Region')) %>%
+  select(`Province/State`,lng,lat,Confirmed) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~log(Confirmed) * 20000, 
+             popup = ~`Province/State`,
+             label = ~Confirmed) %>%
+  addPopups(lng=-121.4, lat=50, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
+            options = popupOptions(closeButton = FALSE)) %>%
+  addPopups(lng=-90, lat=50, paste(sep = "<br/>", "<b>Wuhan Coronavirus(2019-nCoV</b>","Confirmed Infection Counts By State",max(dat$`Last Update`)),
+            options = popupOptions(closeButton = FALSE))
 
 
-
+mapDat
 ######### SEIR model to actual data
 
 ## Model 1 returns a plot of the cumlative model results to match the John Hopkin's University data.
@@ -568,6 +689,66 @@ datAct =
 SEIR.model.incubation.pop(25,0.5,1/7,1/10)
 SEIR.model.incubation.pop(100,1.1,1/7,1/10)
 
-dat
+
+#########################
+# Number of people in a room to have 50% of a person confirmed
+
+bday<-function(n,pr=1/365,stp = 1){
+  pepBuy <- seq(from = 1, to = n, by = stp)
+  #print(pepBuy)
+  prob<-function(n){1-dbinom(1,1:n,pr)}
+  bday<-vector()
+  for(i in pepBuy){
+    out<-prob(i)
+    bday<-c(bday,1-prod(out))
+  }
+  #plot(pepBuy,bday)
+  return(bday)
+}
+
+bday(1000,12/1000000,1)
+
+probUsa =
+dat %>% 
+  filter(`Country/Region` == 'US' & !grepl('County',`Province/State`) & !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1))) %>%
+  mutate(Date = ymd(`Last Update`)) %>%
+    filter(Date == max(Date)) %>%
+  summarise(total_confirmed = sum(Confirmed),
+            total_existing = sum(Existing))
+# population of the USA is approximately 327.2 million
+
+probContact <- data.table(x= seq(from = 1, to = 1500, by = 1))
+probContact[ , prob_conf := bday(n = max(x), pr = probUsa$total_confirmed/327200000)]
+probContact[ , prob_exist := bday(n = max(x), pr = probUsa$total_existing/327200000)]
+
+probContact <- melt(probContact, id.vars = c('x'))
+
+probContact[value >= 0.499 & value <= 0.501,max(x)]
+
+ggplot(data = probContact, aes(x=x,y=value,color = variable))+
+  geom_line() +
+  geom_hline(yintercept = 0.5)+
+  geom_vline(xintercept = c(probContact[value >= 0.499 & value <= 0.501,max(x)],probContact[value >= 0.499 & value <= 0.501,min(x)]))
 
 
+probMichian =
+  dat %>% 
+  filter(`Country/Region` == 'US' & grepl('Michigan',`Province/State`), !grepl('County',`Province/State`) & !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1))) %>%
+  mutate(Date = ymd(`Last Update`)) %>%
+  filter(Date == max(Date)) %>%
+  summarise(total_confirmed = sum(Confirmed),
+            total_existing = sum(Existing))
+# population of the USA is approximately 327.2 million
+
+probContact <- data.table(x= seq(from = 1, to = 10000, by = 1))
+probContact[ , prob_conf := bday(n = max(x), pr = probMichian$total_confirmed/9996000)]
+probContact[ , prob_exist := bday(n = max(x), pr = probMichian$total_existing/9996000)]
+
+probContact <- melt(probContact, id.vars = c('x'))
+
+probContact[value >= 0.499 & value <= 0.501,max(x)]
+
+ggplot(data = probContact, aes(x=x,y=value,color = variable))+
+  geom_line() +
+  geom_hline(yintercept = 0.5)+
+  geom_vline(xintercept = c(probContact[value >= 0.499 & value <= 0.501,max(x)],probContact[value >= 0.499 & value <= 0.501,min(x)]))
