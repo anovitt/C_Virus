@@ -20,21 +20,38 @@ print(files)
 dat<-data.table()
 ##load data
 for(i in 1:(length(files)-1)){
+ 
   data.temp<-fread(files[i],header =TRUE)
   if (ncol(data.temp) == 12) {
     data.temp = select(data.temp, `Province_State`, `Country_Region`,`Last_Update`, `Confirmed`, `Deaths`, `Recovered` )
   }else{
     data.temp = select(data.temp, `Province/State`, `Country/Region`,`Last Update`, `Confirmed`, `Deaths`, `Recovered` )
   }
+  
   names(data.temp) <- c('Province_State', 'Country_Region','Last_Update', 'Confirmed', 'Deaths', 'Recovered' )
+  
+  data.temp <-
+    data.temp %>%
+      mutate(Last_Update = parse_date_time(Last_Update,c("mdy_HM","ymd_HMS")))%>%
+      mutate(Last_Update = max(Last_Update),
+             Confirmed = ifelse(is.na(Confirmed),0,Confirmed),
+             Deaths = ifelse(is.na(Deaths),0,Deaths),
+             Recovered = ifelse(is.na(Recovered),0,Recovered)) %>%
+    
+    as.data.table()
   dat<-rbind(dat,data.temp)
 }
 
-datConf <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_19-covid-Confirmed.csv")
+datConf <- fread('R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports/03-21-2020.csv')
+
+
 datLatLonMap <- 
   datConf %>%
-  select('Province/State','Country/Region','Lat','Long') %>%
-  rename(c('Province_State'= 'Province/State','Country_Region'='Country/Region','lat'= 'Lat','lng'='Long'))
+  rename(c('Province_State' = 'Province/State' , 'Country_Region' = 'Country/Region','lat'= 'Latitude','lng'='Longitude' )) %>%
+  select('Province_State','Country_Region','lat','lng') 
+
+datLatLonMap %>%
+  filter(Country_Region == 'US')
 
 dat =
 dat %>%
@@ -251,7 +268,8 @@ dat %>%
   top_n(10,Confirmed) %>%
   pull(`Province_State`)
 
-dat %>% 
+
+dat%>% 
   filter(grepl('China',`Country_Region`) & `Province_State` %in% top_10)  %>%
   ggplot(aes(x = Last_Update, y= Confirmed, color = `Province_State`))+
   geom_line()+
@@ -265,9 +283,9 @@ dat %>%
 top_10 =
   dat %>% 
   filter(`Country_Region` == 'US'& !grepl('County',`Province_State`)& !grepl('Princess',`Province_State`)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
-  #group_by(`Province/State`)  %>% 
-  #filter(grepl('US',`Country/Region`) & !grepl('County',`Province/State`) )%>%
   filter(Last_Update == max(Last_Update)) %>%
+  #group_by(`Province_State`)  %>% 
+  #filter(grepl('US',`Country/Region`) & !grepl('County',`Province/State`) )%>%
   top_n(10,Confirmed) %>%
   pull(`Province_State`)
 
@@ -317,14 +335,16 @@ dat %>%
 # plot removing China
 top_10 =
   dat %>% 
-  filter(!grepl('China',`Country_Region`) & !grepl('Other',`Country_Region`)) %>%
+  filter(!grepl('China',`Country_Region`) & !grepl('Other',`Country_Region`) & Province_State == "" |
+           `Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
   filter(Last_Update == max(Last_Update)) %>%
   #group_by(`Country/Region`,`Last Update`) %>%
   top_n(10,Confirmed) %>%
   pull(`Country_Region`) 
 
 dat %>% 
-  filter(Country_Region %in% top_10)  %>%
+  filter(Country_Region %in% top_10 & Province_State == "" |
+           `Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)))  %>%
   #filter(Last_Update == max(Last_Update)) %>%
   ggplot(aes(x = Last_Update, y= Confirmed, color = Country_Region))+
   geom_line()+
@@ -408,7 +428,7 @@ dat %>%
   filter(grepl('China',`Country_Region`))  %>%
   group_by(`Province_State`)  %>% 
   filter(`Last_Update` == max(`Last_Update`)) %>%
-  left_join(provinceCoord, by = c('Province_State' = 'Province')) %>%
+  #left_join(provinceCoord, by = c('Province_State' = 'Province')) %>%
   select(`Province_State`,lng,lat,Confirmed) %>%
   leaflet() %>%
   addTiles() %>%
@@ -430,7 +450,7 @@ mapDat =
   filter(grepl('China',`Country_Region`))  %>%
   group_by(`Province_State`)  %>% 
   filter(`Last_Update` == max(`Last_Update`)) %>%
-  left_join(provinceCoord, by = c('Province_State' = 'Province')) %>%
+  #left_join(provinceCoord, by = c('Province_State' = 'Province')) %>%
   select(`Province_State`,lng,lat,Existing) %>%
   leaflet() %>%
   addTiles() %>%
@@ -456,7 +476,7 @@ mapDat =
   filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)))  %>%
   group_by(`Province_State`)  %>% 
   filter(`Last_Update` == max(`Last_Update`)) %>%
-  left_join(datMap, by = c('Province_State' = 'Province_State','Country_Region' ='Country_Region')) %>%
+  #left_join(datMap, by = c('Province_State' = 'Province_State','Country_Region' ='Country_Region')) %>%
   select(`Province_State`,lng,lat,Confirmed) %>%
   leaflet() %>%
   addTiles() %>%
