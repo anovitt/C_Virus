@@ -233,12 +233,15 @@ plotDat('Iceland','')
 # Hubei
 plotDat('China','Hubei')
 
+dat%>%
+  filter(Country_Region == 'US' & grepl('Lo',Province_State) )
 
 plotDat('US','California')
 plotDat('US','New York')
 plotDat('US','Michigan')
 plotDat('US', 'Washington')
 plotDat('US', 'Illinois')
+plotDat('US', 'Louisiana')
 # USA
 plotDatContryUSA()
 
@@ -496,172 +499,72 @@ mapDat
 ## Model 1 returns a plot of the cumlative model results to match the John Hopkin's University data.
 ## Model 2 will take the John Hopkin's data, get a cases per day.
 
-SEIR.model.incubation.pop.cumsum <- function(t, b, g, c ,population = 10000, infect = 1){
+SEIR.model.incubation.pop.cumsum.US <- function(t, b, g, c ,population = 100000, infect = 100, exposed = 1000,country = 'US', province = 'New York' , start_day = '2020-01-22'){
   
-  init <- c(S=1-infect/population,I=infect/population,R=0, E=200/population)
+  init <- c(S=(population-infect-exposed)/population,I=infect/population,R=0, E=exposed/population)
   parameters <- c(bet=b,gamm=g,eta=c)
   time <- seq(0,t,by=t/(1*length(1:t)))
   eqn <- function(time,state,parameters){
     with(as.list(c(state,parameters)),{
-      dS <- -bet*S*I
+      dS <- -bet*S*I 
       dI <- eta*E-gamm*I
       dR <- gamm*I
-      dE <- bet*S*I-eta*E
+      dE <- bet*S*I -eta*E
       return(list(c(dS,dI,dR,dE)))})}
   out<-ode(y=init,times=time,eqn,parms=parameters)
   out.dt<-as.data.table(out)
   
- 
-  out.dt[,S_pop := S*population]
-  out.dt[,I_pop := I*population]
-  out.dt[,R_pop := R*population]
-  out.dt[,E_pop := E*population]
+  out.dt[,Suspected := S*population]
+  out.dt[,Infeceted := I*population]
+  out.dt[,Recovered := R*population]
+  out.dt[,Exposed := E*population]
+  out.dt[,Population := Suspected + Infeceted + Recovered + Exposed]
   
-datAct <-
-  dat %>% 
-    filter(grepl('China',`Country/Region`)& grepl('Hubei',`Province/State`))  %>%
-    group_by(`Province/State`)  %>% 
-    #filter(`Last Update` == max(`Last Update`)) %>%
-    #group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
-    #summarise_if(is.numeric,sum) %>%
-    mutate(Date = ymd(`Last Update`)) %>%
+  
+  datAct <-
+    dat %>% 
+    filter(grepl(country,`Country_Region`) & grepl(province,`Province_State`))  %>%
+    #filter(Country_Region == 'US' & Province_State == 'Michigan')  %>%
+    group_by(`Province_State`) %>% 
+    filter(Last_Update > start_day) %>%
+    mutate(Date = ymd(Last_Update)) %>%
     arrange(Date) %>%
     mutate(numDays = as.numeric(c(diff(Date),1))) %>%
     as.data.table() %>%
     mutate(numDays = cumsum(numDays)) %>%
     select(Confirmed,Recovered,numDays) %>%
     as.data.table()
-
-datAct =  
- datAct %>%
-   mutate(type = rep("Coronavirus",times = nrow(datAct)),
-          Suspected = rep(0,times = nrow(datAct)),
-          Expected = rep(0,times = nrow(datAct)),
-          Confirmed_sum = Confirmed,
-          Recovered_sum = Recovered,
-          Expected_sum = Expected) %>% 
-   as.data.table()
-
-out.dt  =  
- out.dt %>%
-   select(numDays = time , Suspected = S_pop,Confirmed = I_pop,Recovered = R_pop, Expected=E_pop) %>%
-   mutate(type = rep('Model',times = nrow(out.dt)),
-          Confirmed_sum = cumsum(Confirmed),
-          Recovered_sum = cumsum(Recovered),
-          Expected_sum = cumsum(Expected),
-          numDays = numDays - 2) %>%
-   rbind(datAct)
-
-print(tail(out.dt))
- 
-   title <- bquote("SEIR Model: Basic vs. Actual Data")
-   subtit <- bquote(list(beta==.(parameters[1]),~gamma==.(parameters[2]),~eta==.(parameters[3])))
-   
-   res<-ggplot(out.dt,aes(x=numDays))+
-     ggtitle(bquote(atop(bold(.(title)),atop(bold(.(subtit))))))+
-     #geom_line(aes(y=S_pop,colour="Susceptible"))+
-     #geom_point(size = I(2), shape = 1, aes(y=Confirmed,colour="Confirmed"))+
-     #geom_point(size = I(2), shape = 1,aes(y=Recovered,colour="Recovered"))+
-     #geom_point(size = I(2), shape = 1,aes(y=Expected,colour="Incubation"))+
-     geom_line(size = I(1), aes(y=Confirmed_sum,colour="Confirmed"))+
-     #geom_line(aes(y=Recovered_sum,colour="Recovered"))+
-     geom_line(aes(y=Expected_sum,colour="Incubation"))+
-     ylab(label="Count")+
-     xlab(label="Time (days)")+
-     facet_grid(type~.)+
-     theme(legend.justification=c(1,0), legend.position=c(1,0.75))+
-     theme(legend.title=element_text(size=12,face="bold"),
-           legend.background = element_rect(fill='#FFFFFF',
-                                            size=0.5,linetype="solid"),
-           legend.text=element_text(size=10),
-           legend.key=element_rect(colour="#FFFFFF",
-                                   fill='#C2C2C2',
-                                   size=0.25,
-                                   linetype="solid"))+
-     scale_colour_manual("Compartments",
-                         breaks=c("Susceptible","Confirmed","Recovered","Incubation"),
-                         values=c("blue","red","green","black"))
-   print(res)
-   return(out.dt)
-}
-
-# beta is the number infection contacts per day.
-# gamma is 1 over the duration of the infection.
-# e is 1 over the incubation period
-
-SEIR.model.incubation.pop.cumsum(55,2.5,1/7,1/10)
-
-SEIR.model.incubation.pop.cumsum(90,2,1/7,1/10)
-
-
-
-
-SEIR.model.incubation.pop <- function(t, b, g, c ,population = 10000000, infect = 270){
-  
-  init <- c(S=1-infect/population,I=infect/population,R=0, E=200/population)
-  parameters <- c(bet=b,gamm=g,eta=c)
-  time <- seq(0,t,by=t/(1*length(1:t)))
-  eqn <- function(time,state,parameters){
-    with(as.list(c(state,parameters)),{
-      dS <- -bet*S*I
-      dI <- eta*E-gamm*I
-      dR <- gamm*I
-      dE <- bet*S*I-eta*E
-      return(list(c(dS,dI,dR,dE)))})}
-  out<-ode(y=init,times=time,eqn,parms=parameters)
-  out.dt<-as.data.table(out)
-  
-  
-  out.dt[,S_pop := S*population]
-  out.dt[,I_pop := I*population]
-  out.dt[,R_pop := R*population]
-  out.dt[,E_pop := E*population]
-  
-datAct = 
-  dat %>% 
-  filter(grepl('China',`Country/Region`))  %>%
-  group_by(`Province/State`)  %>% 
-  
-  summarise_if(is.numeric,sum) %>%
-  mutate(Date = ymd(`Last Update`)) %>%
-  arrange(Date) %>%
-  mutate(numDays = as.numeric(c(diff(Date),1)))%>%
-  as.data.table() %>%
-  mutate(Confirmed = Confirmed - lag(Confirmed, default = 0)) %>%
-  mutate(Recovered = Recovered - lag(Recovered, default = 0)) %>%
-  mutate(numDays = cumsum(numDays)) %>%
-  select(Confirmed,Recovered,numDays) %>%
-  as.data.table()
   
   datAct =  
     datAct %>%
-    mutate(type = rep("Coronavirus",times = nrow(datAct)),
+    mutate(type = rep("Coronavirus_Data",times = nrow(datAct)),
            Suspected = rep(0,times = nrow(datAct)),
-           Expected = rep(0,times = nrow(datAct))
-          ) %>% 
+           Exposed = rep(0,times = nrow(datAct)),
+           Population = rep(population,times = nrow(datAct)),
+           Confirmed_sum = Confirmed,
+           Recovered_sum = Recovered,
+           Exposed_sum = Exposed) %>% 
     as.data.table()
   
   out.dt  =  
     out.dt %>%
-    select(numDays = time , Suspected = S_pop,Confirmed = I_pop,Recovered = R_pop, Expected=E_pop) %>%
+    mutate(Confirmed_sum = Population - Suspected - Exposed) %>%
     mutate(type = rep('Model',times = nrow(out.dt)),
-           numDays = numDays - 0) %>%
+           Recovered_sum = Recovered,
+           Exposed_sum = Exposed) %>%
+    select(numDays = time, Suspected, Confirmed = Infeceted  ,Recovered, Exposed, Population, type, Confirmed_sum, Recovered_sum,Exposed_sum ) %>%
     rbind(datAct)
   
-  #print(tail(out.dt))
+  print(tail(out.dt))
   
-  title <- bquote("SEIR Model: Basic vs. Actual Data")
+  title <- paste("Coronavirus(2019-nCoV) SEIR Model: Basic vs. Actual Data",country,province,sep=" ")
   subtit <- bquote(list(beta==.(parameters[1]),~gamma==.(parameters[2]),~eta==.(parameters[3])))
   
   res<-ggplot(out.dt,aes(x=numDays))+
     ggtitle(bquote(atop(bold(.(title)),atop(bold(.(subtit))))))+
-    #geom_line(aes(y=S_pop,colour="Susceptible"))+
-    #geom_point(size = I(2), shape = 1, aes(y=Confirmed,colour="Confirmed"))+
-    #geom_point(size = I(2), shape = 1,aes(y=Recovered,colour="Recovered"))+
-    #geom_point(size = I(2), shape = 1,aes(y=Expected,colour="Incubation"))+
-    geom_line(size = I(1), aes(y=Confirmed,colour="Confirmed"))+
-    #geom_line(aes(y=Recovered_sum,colour="Recovered"))+
-    geom_line(aes(y=Expected,colour="Incubation"))+
+    geom_line(size = I(1), aes(y=Confirmed_sum,colour="Confirmed"))+
+    geom_line(aes(y=Recovered_sum,colour="Recovered"))+
+    geom_line(aes(y=Exposed_sum,colour="Incubation"))+
     ylab(label="Count")+
     xlab(label="Time (days)")+
     facet_grid(type~.)+
@@ -681,8 +584,16 @@ datAct =
   return(out.dt)
 }
 
-SEIR.model.incubation.pop(25,0.5,1/7,1/10)
-SEIR.model.incubation.pop(100,1.1,1/7,1/10)
+# beta is the number infection contacts per day.
+# gamma is 1 over the duration of the infection.
+# e is 1 over the incubation period
+
+SEIR.model.incubation.pop.cumsum.US(55,2.5,1/7,1/10,'US','Michigan')
+SEIR.model.incubation.pop.cumsum(90,2,1/7,1/10)
+
+SEIR.model.incubation.pop.cumsum.US(40,2.5,1/7,1/10,population = 100000,country = 'US',province = 'New York', start_day = '2020-03-10' )
+SEIR.model.incubation.pop.cumsum.US(40,2.5,1/7,1/10,population = 75000,country = 'China',province = 'Hubei')
+SEIR.model.incubation.pop.cumsum.US(40,2.5,1/7,1/10,infect = 0, exposed = 100,population = 100000,country = 'US',province = 'Michigan', start_day = '2020-03-10' )
 
 
 #########################
