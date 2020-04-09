@@ -83,8 +83,17 @@ population %>%
   add_row(country = "USNew York", year = 2013, population = 1000000) %>%
   add_row(country = "USMichigan", year = 2013, population = 9996000) %>%
   add_row(country = "USCalifornia", year = 2013, population = 1000000) %>%
-  rename(Country = country, Population = population)
+  rename(Country = country, Population = population) %>% 
+  as.data.table() 
 
+Population <-
+Population %>%
+  add_row(Country = "Korea", year = 2013, Population = Population[Country  == "Republic of Korea",]$Population )
+
+population %>%
+  filter(country == "Republic of Korea")
+
+unique(Population$Country)
 ######## clean the flu data
 # convert the week number to a date for ploting
 
@@ -274,7 +283,7 @@ plotDatPhase('China','Shanghai')
 
 # South Korea
 plotDat('Korea','')
-
+plotDatPhase('Korea','')
 # South Korea
 plotDat('Iceland','')
 
@@ -302,6 +311,7 @@ plotDatContry('Japan')
 
 # Italy
 plotDatContry('Italy')
+plotDatPhase('Italy','')
 
 # Morocco
 plotDatContry('Morocco')
@@ -655,7 +665,7 @@ SEIR.model.incubation.pop.cumsum.US <- function(t, b, g, c ,population = 100000,
   print(tail(out.dt))
   
   title <- paste("Coronavirus(2019-nCoV) SEIR Model: Basic vs. Actual Data",country,province,sep=" ")
-  subtit <- bquote(list(beta==.(parameters[1]),~gamma==.(parameters[2]),~eta==.(parameters[3])))
+  subtit <- bquote(list(beta==.(parameters[1]),~gamma==.(round(parameters[2],3)),~eta==.(round(parameters[3],3))))
   
   res<-ggplot(out.dt,aes(x=numDays))+
     ggtitle(bquote(atop(bold(.(title)),atop(bold(.(subtit))))))+
@@ -686,9 +696,9 @@ SEIR.model.incubation.pop.cumsum.US <- function(t, b, g, c ,population = 100000,
 # gamma is 1 over the duration of the infection.
 # e is 1 over the incubation period
 
-SEIR.model.incubation.pop.cumsum.US(40,2.5,1/14,1/10,infect = 50, exposed = 100,population = 250000,country = 'US',province = 'New York', start_day = '2020-03-10' )
-SEIR.model.incubation.pop.cumsum.US(60,2.5,1/14,1/10,population = 75000,country = 'China',province = 'Hubei')
-SEIR.model.incubation.pop.cumsum.US(40,2.5,1/14,1/10,infect = 0, exposed = 8,population = 120000,country = 'US',province = 'Michigan', start_day = '2020-03-10' )
+SEIR.model.incubation.pop.cumsum.US(40,2.5,1/14,1/14,infect = 20, exposed = 200,population = 250000,country = 'US',province = 'New York', start_day = '2020-03-10' )
+SEIR.model.incubation.pop.cumsum.US(60,2.5,1/14,1/14,population = 75000,country = 'China',province = 'Hubei')
+SEIR.model.incubation.pop.cumsum.US(60,1.1,1/14,1/14,infect = 15, exposed = 350,population = 90000,country = 'US',province = 'Michigan', start_day = '2020-03-10' )
 
 
 #########################
