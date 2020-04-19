@@ -14,13 +14,48 @@ library(deSolve)
 
 # Load data
 
-#dat <- fread("R/2019-coronavirus-dataset-01212020-01262020/2019_nCoV_20200121_202000203.csv")
-#str(dat)
+files<-list.files("R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports/",full.names=TRUE)
+print(files)
+
+files[1]
+
+dat<-data.table()
+##load data
+for(i in 1:(length(files)-1)){
+  i <- 1
+  data.temp<-fread(files[i],header =TRUE)
+  data.temp <- select(data.temp, `Province/State`, `Country/Region`,     `Last Update`, `Confirmed`, `Deaths`, `Recovered` )
+  dat<-rbind(dat,data.temp)
+}
+
+dat =
+dat %>%
+  mutate(Recovered = ifelse(is.na(Recovered), 0, Recovered),
+         Deaths = ifelse(is.na(Deaths), 0, Deaths),
+         Confirmed = ifelse(is.na(Confirmed), 0, Confirmed),
+         `Last Update` = mdy_hm(`Last Update`)) %>%
+  mutate(Existing = Confirmed - Recovered - Deaths) %>%
+  group_by(`Country/Region`,`Province/State`,`Last Update`) %>%
+  summarise(Confirmed = sum(Confirmed),
+            Deaths = sum(Deaths),
+            Recovered = sum(Recovered),
+            Existing = sum(Existing)) %>%
+  mutate(Existing)
+  
+
+datConf <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_19-covid-Confirmed.csv")
+
+datLatLonMap <- select(datConf,c('Province/State','Country/Region','Lat','Long'))
+
 
 # using the John Hopkin's table data 
-datConf <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_19-covid-Confirmed.csv")
+#datConf <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_19-covid-Confirmed.csv") # this file is no longer maintained
+#datRec <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_19-covid-Recovered.csv")
+#datDea <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_19-covid-Deaths.csv")
+
+datConf <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_covid19_confirmed_global.csv")
 datRec <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_19-covid-Recovered.csv")
-datDea <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_19-covid-Deaths.csv")
+datDea <- fread("R/2019-coronavirus-dataset-01212020-01262020/time_series_covid19_deaths_global.csv")
 
 datConf <- melt(datConf, id.vars = c('Province/State','Country/Region','Lat','Long'))
 datRec <- melt(datRec, id.vars = c('Province/State','Country/Region','Lat','Long'))
@@ -30,8 +65,20 @@ names(datConf) <- c('Province/State','Country/Region','Lat','Long','Last Update'
 names(datRec) <- c('Province/State','Country/Region','Lat','Long','Last Update','Recovered')
 names(datDea) <- c('Province/State','Country/Region','Lat','Long','Last Update','Death')
 
-dat <- as.data.table(cbind(datConf,select(datRec,Recovered),select(datDea,Death)))
-dat[, Existing := Confirmed - Recovered - Death]
+#dat <- as.data.table(cbind(datConf,select(datRec,Recovered),select(datDea,Death)))
+
+dat <- as.data.table(cbind(datConf, select(datDea,Death)))
+
+dat =
+dat %>%
+  left_join(select(datRec,'Province/State','Country/Region','Last Update','Recovered'), 
+            by = c('Province/State' = 'Province/State','Country/Region'= 'Country/Region','Last Update'='Last Update')) %>%
+  mutate(Recovered = ifelse(is.na(Recovered), 0, Recovered)) %>%
+  as.data.table()
+
+
+#dat[, Existing := Confirmed - Recovered - Death]
+#dat[, Existing := Confirmed  - Death]
 
 datLatLonMap <- select(dat,c('Province/State','Country/Region','Lat','Long'))
 
@@ -44,6 +91,9 @@ str(datFlu)
 dat[is.na(dat)] <- 0
 dat[,`Last Update`:= as.character(`Last Update`)]
 str(dat)
+
+dat %>%
+  filter(`Country/Region` == 'US' & grepl('MI', `Province/State`))
 
 # delete the duplicated entrys by date and time of entry. 
 
@@ -119,7 +169,7 @@ plotDat <- function(country,province ){
     scale_colour_manual("Compartments",
                         breaks=c("Infected","Existing","Recovered","Death"),
                         values=c("green","red","blue","black"))+
-    labs(title = "Wuhan Coronavirus(2019-nCoV)",
+    labs(title = "Coronavirus(2019-nCoV)",
          subtitle = paste(province,country,sep =" "))
 }
 
@@ -156,7 +206,7 @@ plotDatContry <- function(country ){
     scale_colour_manual("Compartments",
                         breaks=c("Infected","Existing","Recovered","Death"),
                         values=c("green","red","blue","black"))+
-    labs(title = "Wuhan Coronavirus(2019-nCoV)",
+    labs(title = "Coronavirus(2019-nCoV)",
          subtitle = paste(country,sep =" "))
 }
 
@@ -192,14 +242,18 @@ dat %>%
     scale_colour_manual("Compartments",
                         breaks=c("Infected","Existing","Recovered","Death"),
                         values=c("green","red","blue","black"))+
-    labs(title = "Wuhan Coronavirus(2019-nCoV)",
+    labs(title = "Coronavirus(2019-nCoV)",
          subtitle = paste("United States Of America",sep =" "))
 }
 
+state <- 'Michigan'
+
 plotDatContryUSAState <- function(state){
   dat %>%
-    filter(`Country/Region` == 'US'& !grepl('County',`Province/State`) & grepl(state,`Province/State`) & !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1))) %>%
-    group_by(`Province/State`)  %>% 
+    filter(`Country/Region` == 'US'& !grepl('County',`Province/State`) & grepl(state,`Province/State`) & 
+             !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1))) %>%
+    #group_by(`Province/State`)  %>% 
+    filter(`Province/State` == state) %>%
     #filter(`Last Update` == max(`Last Update`)) %>%
     #group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
     #summarise_if(is.numeric,sum) %>%
@@ -231,7 +285,7 @@ plotDatContryUSAState <- function(state){
     scale_colour_manual("Compartments",
                         breaks=c("Infected","Existing","Recovered","Death"),
                         values=c("green","red","blue","black"))+
-    labs(title = "Wuhan Coronavirus(2019-nCoV)",
+    labs(title = "Coronavirus(2019-nCoV)",
          subtitle = paste("United States Of America",state,sep =" "))
 }
   
@@ -243,6 +297,9 @@ plotDat('China','Shanghai')
 # South Korea
 plotDat('Korea','')
 
+# South Korea
+plotDat('Iceland','')
+
 # Hubei
 plotDat('China','Hubei')
 
@@ -252,13 +309,29 @@ plotDatContryUSA()
 plotDatContryUSAState('California')
 plotDatContryUSAState('New York')
 plotDatContryUSAState('Michigan')
+plotDatContryUSAState('Florida')
+plotDatContryUSAState('Washington')
 
+dat %>% 
+  filter(`Country/Region` == 'US' & !grepl('County',`Province/State`) &
+           !grepl("^[[:upper:]]+$",str_sub(`Province/State`,-2,-1)) &
+           `Province/State` == 'Washington')
+
+#plotDat('US','Oakland MI')
 #China
 plotDatContry('China')
 
 # Japan
 plotDatContry('Japan')
 
+# Italy
+plotDatContry('Italy')
+
+# Morocco
+plotDatContry('Morocco')
+
+# UK
+plotDatContry('United Kingdom')
 
 # plot of top 10 provinces 
 # get the names of the 10 provinces
@@ -322,8 +395,7 @@ dat %>%
 
 dat %>% 
   filter(grepl('China',`Country/Region`) & `Province/State` %in% c('Shanghai','Beijing'))  %>%
-  group_by(`Province/State`, d = day(`Last Update`)) %>% 
-  filter(`Last Update` == max(`Last Update`)) %>%
+  group_by(`Province/State`) %>% 
   ggplot(aes(x = `Last Update`, y= Confirmed, color = `Province/State`))+
   geom_line()+
   geom_point(size = I(3), shape = 1)+
@@ -361,7 +433,7 @@ dat %>%
 
 
 datCVirFlu <-
-dat %>% 
+  dat %>% 
   #filter(grepl('China',`Country/Region`)& grepl('Main',`Country/Region`))  %>%
   group_by(`Province/State`, d = day(`Last Update`))  %>% 
   filter(`Last Update` == max(`Last Update`)) %>%
@@ -499,7 +571,7 @@ mapDat
 ## Model 1 returns a plot of the cumlative model results to match the John Hopkin's University data.
 ## Model 2 will take the John Hopkin's data, get a cases per day.
 
-SEIR.model.incubation.pop.cumsum <- function(t, b, g, c ,population = 10000000, infect = 1){
+SEIR.model.incubation.pop.cumsum <- function(t, b, g, c ,population = 10000, infect = 1){
   
   init <- c(S=1-infect/population,I=infect/population,R=0, E=200/population)
   parameters <- c(bet=b,gamm=g,eta=c)
@@ -520,15 +592,14 @@ SEIR.model.incubation.pop.cumsum <- function(t, b, g, c ,population = 10000000, 
   out.dt[,R_pop := R*population]
   out.dt[,E_pop := E*population]
   
-  
 datAct <-
   dat %>% 
     filter(grepl('China',`Country/Region`)& grepl('Hubei',`Province/State`))  %>%
-    group_by(`Province/State`, d = day(`Last Update`))  %>% 
-    filter(`Last Update` == max(`Last Update`)) %>%
-    group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
-    summarise_if(is.numeric,sum) %>%
-    mutate(Date = ymd(paste(y,m,d))) %>%
+    group_by(`Province/State`)  %>% 
+    #filter(`Last Update` == max(`Last Update`)) %>%
+    #group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
+    #summarise_if(is.numeric,sum) %>%
+    mutate(Date = ymd(`Last Update`)) %>%
     arrange(Date) %>%
     mutate(numDays = as.numeric(c(diff(Date),1))) %>%
     as.data.table() %>%
@@ -593,9 +664,9 @@ print(tail(out.dt))
 # gamma is 1 over the duration of the infection.
 # e is 1 over the incubation period
 
-SEIR.model.incubation.pop.cumsum(32,.9,1/7,1/10)
+SEIR.model.incubation.pop.cumsum(55,2.5,1/7,1/10)
 
-SEIR.model.incubation.pop.cumsum(90,.9,1/7,1/10)
+SEIR.model.incubation.pop.cumsum(90,2,1/7,1/10)
 
 
 
@@ -624,11 +695,10 @@ SEIR.model.incubation.pop <- function(t, b, g, c ,population = 10000000, infect 
 datAct = 
   dat %>% 
   filter(grepl('China',`Country/Region`))  %>%
-  group_by(`Province/State`, d = day(`Last Update`))  %>% 
-  filter(`Last Update` == max(`Last Update`)) %>%
-  group_by( d, m = month(`Last Update`),y=year(`Last Update`)) %>%
+  group_by(`Province/State`)  %>% 
+  
   summarise_if(is.numeric,sum) %>%
-  mutate(Date = ymd(paste(y,m,d))) %>%
+  mutate(Date = ymd(`Last Update`)) %>%
   arrange(Date) %>%
   mutate(numDays = as.numeric(c(diff(Date),1)))%>%
   as.data.table() %>%
