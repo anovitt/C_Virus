@@ -20,7 +20,7 @@ print(files)
 dat<-data.table()
 ##load data
 for(i in 1:(length(files)-1)){
- 
+  
   data.temp<-fread(files[i],header =TRUE)
   if (ncol(data.temp) == 12) {
     data.temp = select(data.temp, `Province_State`, `Country_Region`,`Last_Update`, `Confirmed`, `Deaths`, `Recovered` )
@@ -127,13 +127,20 @@ datFlu <- fread("R/2019-coronavirus-dataset-01212020-01262020/flu.csv")
 str(datFlu)
 
 Population <- 
+rbind (
 population %>% 
   filter(year == max(year)) %>%
   mutate(country = ifelse(country == "United States of America","US",country)) %>%
-  add_row(country = "ChinaShanghai", year = 2013,population = 25000000) %>%
-  add_row(country = "USNew York", year = 2013, population = 1000000) %>%
-  add_row(country = "USMichigan", year = 2013, population = 9996000) %>%
-  add_row(country = "USCalifornia", year = 2013, population = 1000000) %>%
+  add_row(country = "ChinaShanghai", year = 2013,population = 25000000),
+  
+dat %>%
+  filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  filter(Last_Update == max(Last_Update)) %>%
+  mutate(country = paste0(Country_Region,Province_State),
+         population = 1000000,
+         year = 2013) %>%
+  select(country,year,population)
+) %>%
   rename(Country = country, Population = population) %>% 
   as.data.table() 
 
@@ -141,10 +148,6 @@ Population <-
 Population %>%
   add_row(Country = "Korea", year = 2013, Population = Population[Country  == "Republic of Korea",]$Population )
 
-population %>%
-  filter(country == "Republic of Korea")
-
-unique(Population$Country)
 ######## clean the flu data
 # convert the week number to a date for ploting
 
@@ -286,14 +289,14 @@ plotDatContry <- function(country ){
                                   linetype="solid"))+
     scale_colour_manual("Compartments",
                         breaks=c("Infected","Existing","Recovered","Deaths"),
-                        values=c("green","red","blue","black"))+
+                        values=c("green","red","blue","black"))+ filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)) & Last_Update > '2020-03-09')
     labs(title = "Coronavirus(2019-nCoV)",
          subtitle = paste(country,sep =" "))
 }
 
 plotDatContryUSA <- function(){
 dat %>%
-  filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)) & Last_Update > '2020-03-09') %>%
+  %>%
     #group_by(`Province_State` )  %>% 
     group_by( Last_Update) %>%
     summarise_if(is.numeric,sum) %>%
@@ -367,8 +370,14 @@ plotDatPhase('US','Michigan')
 plotDat('US','Ohio')
 plotDat('US', 'Washington')
 plotDat('US', 'Illinois')
+plotDatPhase('US','Illinois')
 plotDat('US', 'Louisiana')
 plotDat('US', 'Georgia')
+plotDatPhase('US','Georgia')
+plotDat('US', 'Texas')
+plotDatPhase('US','Texas')
+plotDat('US', 'Colorado')
+plotDat('US', 'Florida')
 # USA
 plotDatContryUSA()
 
@@ -408,7 +417,6 @@ dat%>%
   ggplot(aes(x = Last_Update, y= Confirmed, color = `Province_State`))+
   geom_line()+
   geom_point(size = I(3), shape = 1)+
-  scale_y_log10()+
   ylab(label="Count")+
   xlab(label="Date")+
   labs(title = "Coronavirus(2019-nCoV)",
@@ -511,12 +519,13 @@ top_10_Country =
             Deaths = sum(Deaths),
             Recovered = sum(Recovered),
             Existing = sum(Existing)) %>%
-  top_n(10,Confirmed) %>%
+  top_n(15,Confirmed) %>%
   pull(`Country_Region`) 
 
 dat %>% 
   filter(Country_Region %in% top_10_Country  & !grepl('County',`Province_State`) & 
            !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)))  %>%
+  filter(Last_Update > '2020-03-15') %>%
   group_by(`Country_Region`, Last_Update) %>%
   summarise(Confirmed = sum(Confirmed),
             Deaths = sum(Deaths),
@@ -670,13 +679,16 @@ mapDat =
   group_by(`Province_State`)  %>% 
   filter(`Last_Update` == max(`Last_Update`)) %>%
   #left_join(datMap, by = c('Province_State' = 'Province_State','Country_Region' ='Country_Region')) %>%
-  select(`Province_State`,lng,lat,Confirmed) %>%
+  select(`Province_State`,lng,lat,Confirmed,Existing) %>%
   leaflet() %>%
   addTiles() %>%
   addCircles(lng = ~lng, lat = ~lat, weight = 1,
-             radius = ~log(Confirmed) * 10000, 
+             radius = ~(Confirmed) * .8, 
              popup = ~`Province_State`,
              label = ~Confirmed) %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(Existing) * .8, 
+             color = 'red') %>%
   addPopups(lng=-121.4, lat=50, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
             options = popupOptions(closeButton = FALSE)) %>%
   addPopups(lng=-90, lat=50, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Confirmed Infection Counts By State",max(dat$`Last Update`)),
@@ -762,7 +774,7 @@ SEIR.model.incubation.pop.cumsum.US <- function(t, b, g, c ,
     ylab(label="Count")+
     xlab(label="Time (days)")+
     facet_grid(type~.)+
-    theme(legend.justification=c(1,0), legend.position=c(1,0.75))+
+    theme(legend.justification=c(1,0), legend.position=c(.125,0.75))+
     theme(legend.title=element_text(size=12,face="bold"),
           legend.background = element_rect(fill='#FFFFFF',
                                            size=0.5,linetype="solid"),
@@ -782,9 +794,10 @@ SEIR.model.incubation.pop.cumsum.US <- function(t, b, g, c ,
 # gamma is 1 over the duration of the infection.
 # e is 1 over the incubation period
 
-SEIR.model.incubation.pop.cumsum.US(60,1.2,1/14,1/14,infect = 200, exposed = 1400,population = 450000,country = 'US',province = 'New York', start_day = '2020-03-10' )
+SEIR.model.incubation.pop.cumsum.US(70,.50,1/14,1/14,infect = 5000, exposed = 900,population = 400000,country = 'US',province = 'New York', start_day = '2020-03-10' )
 SEIR.model.incubation.pop.cumsum.US(60,2.5,1/14,1/14,population = 75000,country = 'China',province = 'Hubei')
-SEIR.model.incubation.pop.cumsum.US(60,.7,1/14,1/14,infect = 15, exposed = 350,population = 70000,country = 'US',province = 'Michigan', start_day = '2020-03-10' )
+SEIR.model.incubation.pop.cumsum.US(70,.55,1/14,1/14,infect = 150,
+                                    exposed = 350,population = 60000,country = 'US',province = 'Michigan', start_day = '2020-03-10' )
 
 # Chi Square Test for Recovered cases and deaths
 
@@ -806,9 +819,69 @@ dimnames(M) <- list(Outcome = c("Deaths", "Recovered","Confirmed"),
 (Xsq <- chisq.test(M))  # Prints test summary
 Xsq$observed   # observed counts (same as M)
 round(Xsq$expected,0) # expected counts under the null
+(Xsq$observed - round(Xsq$expected,0))
 Xsq$residuals  # Pearson residuals
 Xsq$stdres     # standardized residuals
 
+# Chi square test for US states
+
+notIn <- c('Princess', 'Guam', 'Samoa', 'Islands')
+
+datChiSq <-
+dat %>%
+  filter(Country_Region == 'US' & Last_Update == max(Last_Update) & !grepl(paste(notIn, collapse="|"), Province_State)) %>%
+  select(Province_State,Deaths,Recovered,Confirmed) %>%
+  as.matrix() %>%
+  t()
+
+M <- as.table(rbind(as.numeric(datChiSq[2,]), as.numeric(datChiSq[3,]) , as.numeric(datChiSq[4,])))
+dimnames(M) <- list(Outcome = c("Deaths", "Recovered","Confirmed"),
+                    Country = datChiSq[1,])
+(Xsq <- chisq.test(M))  # Prints test summary
+Xsq$observed   # observed counts (same as M)
+round(Xsq$expected,0) # expected counts under the null
+(Xsq$observed - round(Xsq$expected,0))
+Xsq$residuals  # Pearson residuals
+Xsq$stdres     # standardized residuals
+
+# Plot state Chi Square data Expected and Actual
+StateLatLng <-
+dat %>%
+  filter(Country_Region == 'US' & Last_Update == max(Last_Update) & !grepl(paste(notIn, collapse="|"), Province_State)) %>%
+  select(Province_State,lat,lng) 
+
+
+StateChiPlot <-
+  as.data.table(Xsq$observed - round(Xsq$expected,0)) %>%
+  left_join(StateLatLng, by = c('Country' = 'Province_State')) %>%
+  rename('State' = 'Country') %>%
+  group_by(Outcome) %>%
+  mutate(NN = (N - min(N))/(max(N) - min(N))) %>%
+  pivot_wider(names_from = Outcome,values_from = c(N,NN))
+  
+
+mapDat =
+  StateChiPlot %>% 
+  #left_join(datMap, by = c('Province_State' = 'Province_State','Country_Region' ='Country_Region')) %>%
+  #select(`Province_State`,lng,lat,Confirmed) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(NN_Deaths) * 100000, 
+             popup = ~`State`,
+             label = ~NN_Deaths) %>%
+  addCircles(lng = ~(lng), lat = ~(lat + 0.5), weight = 1,
+             radius = ~(NN_Confirmed) * 100000, 
+             popup = ~`State`,
+             label = ~NN_Confirmed,
+             fillColor = 'red') %>%
+  addPopups(lng=-121.4, lat=50, paste(sep = "<br/>", "Scroll over the circle to see the count difference","Click the circle to see the state name"),
+            options = popupOptions(closeButton = FALSE)) %>%
+  addPopups(lng=-90, lat=50, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Chi Square Analysis By State"),
+            options = popupOptions(closeButton = FALSE))
+
+
+mapDat
 
 #########################
 # Estimate the number of people in a room to have 50% of a person confirmed
@@ -947,7 +1020,7 @@ probContact[ , prob_exist := bday(n = max(x), pr = probMiWayne$total_existing/30
 
 probContact <- melt(probContact, id.vars = c('x'))
 
-probContact[value >= 0.48 & value <= 0.51,max(x)]
+probContact[value >= 0.47 & value <= 0.51,max(x)]
 
 ggplot(data = probContact, aes(x=x,y=value,color = variable))+
   geom_line() +
@@ -955,26 +1028,123 @@ ggplot(data = probContact, aes(x=x,y=value,color = variable))+
   geom_vline(xintercept = c(probContact[value >= 0.499 & value <= 0.501,max(x)],probContact[value >= 0.499 & value <= 0.501,min(x)]))
 
 
-datMI =  
-  datMI %>%
-    filter(Province_State == 'Michigan' & Admin2 != 'Unassigned' &  Admin2 != 'Out of MI' ) 
-  
-  mapDat =
-    datMI %>% 
-    group_by(`Admin2`)  %>% 
-    filter(`Last_Update` == max(`Last_Update`)) %>%
-    select(`Admin2`,lng,lat,Confirmed) %>%
-    leaflet() %>%
-    addTiles() %>%
-    addCircles(lng = ~lng, lat = ~lat, weight = 1,
-               radius = ~log(Confirmed) * 2000, 
-               popup = ~`Admin2`,
-               label = ~Confirmed) %>%
-    addPopups(lng=-80, lat=45, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
-              options = popupOptions(closeButton = FALSE)) %>%
-    addPopups(lng=-80, lat=47, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Confirmed Infection Counts Michigan",max(dat$`Last Update`)),
-              options = popupOptions(closeButton = FALSE))
 
-  mapDat  
+  
+     
   
   
+  
+  dat<-data.table()
+  ##load data
+  
+  files<-list.files("R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports/",full.names=TRUE)
+  print(files)
+  for(i in 1:(length(files)-1)){
+    data.temp<-fread(files[i],header =TRUE) 
+    
+    if (ncol(data.temp) == 12) {
+      data.temp = select(data.temp, `Province_State`, `Country_Region`,`Admin2`,`Last_Update`, `Confirmed`, `Deaths`, `Recovered`, Lat, Long_ )
+    }else{
+      data.temp = data.table(Province_State = 'xx', `Country_Region` = 'xx',`Admin2`= 'xx',`Last_Update`= '1900-01-01', `Confirmed` = NA, `Deaths`= NA, `Recovered` = NA , Lat = NA, Long_ =NA)
+    }
+    
+    #names(data.temp) <- c('Province_State', 'Country_Region','Last_Update', 'Confirmed', 'Deaths', 'Recovered' )
+    
+    data.temp <-
+      data.temp %>%
+      mutate(Last_Update = parse_date_time(Last_Update,c("mdy_HM","ymd_HMS")))%>%
+      mutate(Last_Update = max(Last_Update),
+             Confirmed = ifelse(is.na(Confirmed),0,Confirmed),
+             Deaths = ifelse(is.na(Deaths),0,Deaths),
+             Recovered = ifelse(is.na(Recovered),0,Recovered)) %>%
+      mutate(Existing = Confirmed - Deaths - Recovered) %>%
+      
+      as.data.table()
+    dat<-rbind(dat,data.temp)
+    dat<-
+      dat %>%
+      filter(Country_Region == 'US') 
+    
+  }
+  
+datMidWest =
+    dat %>%
+    filter(Province_State == 'Illinois' |Province_State == 'Michigan' | Province_State == 'Indiana' | Province_State == 'Ohio' | Province_State == 'Wisconsin' | Province_State == 'Minnesota') %>%
+    rename(c('Province_State' = 'Province_State' , 'Country_Region' = 'Country_Region','Admin2' = 'Admin2','lat'= 'Lat','lng'='Long_' )) %>%
+    mutate(Existing = Confirmed - Deaths - Recovered)  
+
+mapDat =
+  datMidWest %>% 
+  group_by(`Admin2`)  %>% 
+  filter(`Last_Update` == max(`Last_Update`)) %>%
+  select(`Admin2`,lng,lat,Confirmed,Existing) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(Confirmed) * 1, 
+             popup = ~`Admin2`,
+             label = ~Confirmed) %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(Existing) * 1, 
+             color = 'red') %>%
+  addPopups(lng=-80, lat=45, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
+            options = popupOptions(closeButton = FALSE)) %>%
+  addPopups(lng=-80, lat=47, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Confirmed Infection Counts Illinois",max(dat$`Last Update`)),
+            options = popupOptions(closeButton = FALSE))
+
+mapDat  
+
+datUSA <-
+dat %>%
+  rename(c('Province_State' = 'Province_State' , 'Country_Region' = 'Country_Region','Admin2' = 'Admin2','lat'= 'Lat','lng'='Long_' )) %>%
+  mutate(Existing = Confirmed - Deaths - Recovered)
+  
+mapDat =
+  datUSA %>% 
+  group_by(`Admin2`)  %>% 
+  filter(`Last_Update` == max(`Last_Update`)) %>%
+  select(`Admin2`,lng,lat,Confirmed,Existing) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(Confirmed) * 1, 
+             popup = ~`Admin2`,
+             label = ~Confirmed) %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(Existing) * 1, 
+             color = 'red') %>%
+  addPopups(lng=-80, lat=50, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
+            options = popupOptions(closeButton = FALSE)) %>%
+  addPopups(lng=-80, lat=55, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Confirmed Infection Counts USA",max(dat$`Last Update`)),
+            options = popupOptions(closeButton = FALSE))
+
+mapDat  
+
+
+datMI =  
+  dat %>%
+  filter(Province_State == 'Michigan' ) %>%
+  rename(c('Province_State' = 'Province_State' , 'Country_Region' = 'Country_Region','Admin2' = 'Admin2','lat'= 'Lat','lng'='Long_' )) %>%
+  mutate(Existing = Confirmed - Deaths - Recovered)  
+
+mapDat =
+  datMI %>% 
+  group_by(`Admin2`)  %>% 
+  filter(`Last_Update` == max(`Last_Update`)) %>%
+  select(`Admin2`,lng,lat,Confirmed,Existing) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(Confirmed) * 2, 
+             popup = ~`Admin2`,
+             label = ~Confirmed) %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(Existing) * 2, 
+             color = 'red') %>%
+  addPopups(lng=-80, lat=45, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
+            options = popupOptions(closeButton = FALSE)) %>%
+  addPopups(lng=-80, lat=47, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Confirmed Infection Counts Michigan",max(dat$`Last Update`)),
+            options = popupOptions(closeButton = FALSE))
+
+mapDat  
+
