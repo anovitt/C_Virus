@@ -256,10 +256,12 @@ plotDatPhase <- function(country,province ){
          subtitle = paste(province,country,sep =" "))
 }
 
+country = 'Spain'
+
 plotDatContry <- function(country ){
   dat %>% 
     {if (country== 'Germany' | country== 'France') filter(., Last_Update > '2020-03-09') else filter(., Last_Update > '2020-01-21')} %>%
-    filter(grepl(country,`Country_Region`) & !grepl('county',`Province_State`) )  %>%
+    filter(grepl(country,`Country_Region`) & grepl("^\\s*$",`Province_State`))  %>%
     #group_by(`Province_State`) %>% 
     group_by(Last_Update) %>%
     summarise_if(is.numeric,sum) %>%
@@ -289,18 +291,18 @@ plotDatContry <- function(country ){
                                   linetype="solid"))+
     scale_colour_manual("Compartments",
                         breaks=c("Infected","Existing","Recovered","Deaths"),
-                        values=c("green","red","blue","black"))+ filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)) & Last_Update > '2020-03-09')
+                        values=c("green","red","blue","black")) +
     labs(title = "Coronavirus(2019-nCoV)",
          subtitle = paste(country,sep =" "))
 }
 
 plotDatContryUSA <- function(){
 dat %>%
-  %>%
-    #group_by(`Province_State` )  %>% 
+    filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) &
+             !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)) &
+             Last_Update > '2020-03-09') %>%
     group_by( Last_Update) %>%
     summarise_if(is.numeric,sum) %>%
-    #mutate(Date = ymd(paste(y,m,d))) %>%
     
     ggplot(aes(x = Last_Update))+
     geom_line(aes(y=Confirmed, color = "Infected"))+
@@ -368,16 +370,20 @@ plotDatPhase('US','New York')
 plotDat('US','Michigan')
 plotDatPhase('US','Michigan')
 plotDat('US','Ohio')
+plotDatPhase('US','Ohio')
 plotDat('US', 'Washington')
+plotDatPhase('US','Washington')
 plotDat('US', 'Illinois')
 plotDatPhase('US','Illinois')
 plotDat('US', 'Louisiana')
+plotDatPhase('US', 'Louisiana')
 plotDat('US', 'Georgia')
 plotDatPhase('US','Georgia')
 plotDat('US', 'Texas')
 plotDatPhase('US','Texas')
 plotDat('US', 'Colorado')
 plotDat('US', 'Florida')
+plotDatPhase('US', 'Florida')
 # USA
 plotDatContryUSA()
 
