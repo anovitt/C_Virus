@@ -1,28 +1,24 @@
 library(data.table)
 library(ggplot2)
 library(lubridate)
-library(ggmap)
-library(bit64)
-library(maps)
-library(tmap)
+#library(maps)
+#library(tmap)
 library(leaflet)
-library(sf)
-library(RColorBrewer)
-library(dplyr)
 library(tidyverse)
 library(deSolve)
+library(directlabels)
 
 # Load data
+# function to load data
 
 files<-list.files("R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports/",full.names=TRUE)
-print(files)
-
+  
 dat<-data.table()
 ##load data
 for(i in 1:(length(files)-1)){
-  
+ 
   data.temp<-fread(files[i],header =TRUE)
-  if (ncol(data.temp) == 12) {
+  if (ncol(data.temp) >= 12) {
     data.temp = select(data.temp, `Province_State`, `Country_Region`,`Last_Update`, `Confirmed`, `Deaths`, `Recovered` )
   }else{
     data.temp = select(data.temp, `Province/State`, `Country/Region`,`Last Update`, `Confirmed`, `Deaths`, `Recovered` )
@@ -44,10 +40,11 @@ for(i in 1:(length(files)-1)){
 }
 
 
+#datLoad()
+
 ########################### USA Reports
 
 files<-list.files("R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports_us/",full.names=TRUE)
-print(files)
 
 datUS <- data.table()
 
@@ -73,11 +70,6 @@ for(i in 1:(length(files)-1)){
   datUS<-rbind(datUS,data.temp)
 }
 
-# try left join to get dat US data in to dat
-
-dat %>% 
-  left_join(datUS, by = c('Last_Update','Country_Region','Province_State'))
-
 # sub set and add sub set US daily data from after april 21.
 
 dat<-
@@ -92,16 +84,12 @@ datUS %>%
   mutate(Existing = Confirmed - Recovered - Deaths) %>%
   as.data.table()
 
-dat
-
 datConf <- fread('R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports/03-21-2020.csv')
-
 
 datLatLonMap <- 
   datConf %>%
   rename(c('Province_State' = 'Province/State' , 'Country_Region' = 'Country/Region','lat'= 'Latitude','lng'='Longitude' )) %>%
   select('Province_State','Country_Region','lat','lng') 
-
 
 dat =
 dat %>%
@@ -122,16 +110,23 @@ dat %>%
   filter(Confirmed == max(Confirmed)) %>% 
   distinct %>%
   as.data.table()
+
+dat
   
 datFlu <- fread("R/2019-coronavirus-dataset-01212020-01262020/flu.csv")
-str(datFlu)
+usStatePopulation <- fread("R/2019-coronavirus-dataset-01212020-01262020/nst-est2019-01.csv",header = TRUE)
+
+usStatePopulation <-
+usStatePopulation %>%
+  mutate(`Geographic Area` = ifelse(grepl('[[:punct:] ]+',`Geographic Area`),str_sub(`Geographic Area`,2,-1),`Geographic Area`))
 
 Population <- 
 rbind (
 population %>% 
   filter(year == max(year)) %>%
   mutate(country = ifelse(country == "United States of America","US",country)) %>%
-  add_row(country = "ChinaShanghai", year = 2013,population = 25000000),
+  add_row(country = "ChinaShanghai", year = 2013,population = 25000000) %>%
+  add_row(country = "ChinaBeijing", year = 2013,population = 12000000),
   
 dat %>%
   filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
@@ -215,8 +210,6 @@ plotDat <- function(country,province ){
          subtitle = paste(province,country,sep =" "))
 }
 
-Population$country
-
 plotDatPhase <- function(country,province ){
   
   Pop <-
@@ -227,9 +220,10 @@ plotDatPhase <- function(country,province ){
   print(Pop)
   
   dat %>% 
-    {if (country== 'US') filter(., Last_Update > '2020-03-09') else filter(., Last_Update > '2020-01-21')} %>% 
+    {if (country== 'US'|country == 'Italy' | country == 'France' | country== 'Spain' ) filter(., Last_Update > '2020-03-09') else filter(., Last_Update > '2020-01-21')} %>% 
     filter(grepl(country,`Country_Region`) & grepl(province,`Province_State`))  %>%
     mutate('Suseptable' = Pop$Population - Existing - Deaths - Recovered) %>%
+    filter(Existing >=0)%>%
     group_by(`Province_State`) %>% 
     ggplot(aes(x = `Existing`))+
     #geom_line(aes(y=Confirmed, color = "Infected"))+
@@ -256,11 +250,44 @@ plotDatPhase <- function(country,province ){
          subtitle = paste(province,country,sep =" "))
 }
 
-country = 'Spain'
+
+plotDatContry2 <- function(country ){
+dat %>%
+  filter(grepl(country,`Country_Region`)) %>%
+  group_by(Last_Update) %>%
+  summarise_if(is.numeric,sum) %>%
+  ggplot(aes(x = Last_Update))+
+  geom_line(aes(y=Confirmed, color = "Infected"))+
+  geom_line(aes(y=Existing, color = "Existing"))+
+  geom_line(aes(y=Recovered, color = "Recovered"))+
+  geom_line(aes(y=Deaths, color = "Deaths"))+
+  
+  geom_point(size = I(3), shape = 1, aes(y=Confirmed, color = "Infected"))+
+  geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
+  geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
+  geom_point(size = I(3), shape = 1,aes(y=Deaths, color = "Deaths"))+
+  
+  ylab(label="Count")+
+  xlab(label="Date")+
+  theme(legend.justification=c(1,0), legend.position=c(0.25,0.75))+
+  theme(legend.title=element_text(size=12,face="bold"),
+        legend.background = element_rect(fill='#FFFFFF',
+                                         size=0.5,linetype="solid"),
+        legend.text=element_text(size=10),
+        legend.key=element_rect(colour="#FFFFFF",
+                                fill='#C2C2C2',
+                                size=0.25,
+                                linetype="solid"))+
+  scale_colour_manual("Compartments",
+                      breaks=c("Infected","Existing","Recovered","Deaths"),
+                      values=c("green","red","blue","black")) +
+  labs(title = "Coronavirus(2019-nCoV)",
+       subtitle = paste(country,sep =" "))
+}
 
 plotDatContry <- function(country ){
   dat %>% 
-    {if (country== 'Germany' | country== 'France') filter(., Last_Update > '2020-03-09') else filter(., Last_Update > '2020-01-21')} %>%
+    {if (country== 'Germany' | country== 'France'| country == 'India' | country == 'Spain' | country == 'Italy') filter(., Last_Update > '2020-03-09') else filter(., Last_Update > '2020-01-21')} %>%
     filter(grepl(country,`Country_Region`) & grepl("^\\s*$",`Province_State`))  %>%
     #group_by(`Province_State`) %>% 
     group_by(Last_Update) %>%
@@ -332,20 +359,20 @@ dat %>%
          subtitle = paste("United States Of America",sep =" "))
 }
 
-
-# data is pulled at multiple times, but is a cumlative sum by province  / country
-# Shanghai 
+# Plots of various countries and states
 plotDat('China','Shanghai')
 plotDatPhase('China','Shanghai')
 
-# South Korea
+plotDat('China','Beijing')
+plotDatPhase('China','Beijing')
+
 plotDat('Korea','')
 plotDatPhase('Korea','')
-# South Korea
+
 plotDat('Iceland','')
 plotDatPhase('Iceland','')
 
-plotDat('Sweden','')
+plotDatContry('Sweden')
 plotDatPhase('Sweden','')
 
 plotDatContry('Germany')
@@ -365,6 +392,8 @@ plotDat('China','Hubei')
 
 plotDat('US','California')
 plotDatPhase('US','California')
+plotDat('US','New Jersey')
+plotDatPhase('US','New Jersey')
 plotDat('US','New York')
 plotDatPhase('US','New York')
 plotDat('US','Michigan')
@@ -384,11 +413,27 @@ plotDatPhase('US','Texas')
 plotDat('US', 'Colorado')
 plotDat('US', 'Florida')
 plotDatPhase('US', 'Florida')
+plotDat('US', 'Alabama')
+plotDatPhase('US', 'Alabama')
+plotDat('US', 'Mississippi')
+plotDatPhase('US', 'Mississippi')
+plotDat('US', 'Indiana')
+plotDatPhase('US', 'Indiana')
+plotDat('US', 'Wisconsin')
+plotDatPhase('US', 'Wisconsin')
+plotDat('US', 'Arkansas')
+plotDatPhase('US', 'Arkansas')
+plotDat('US', 'Arizona')
+plotDatPhase('US', 'Arizona')
+plotDat('US', 'North Carolina')
+plotDatPhase('US', 'North Carolina')
+plotDat('US', 'South Carolina')
+plotDatPhase('US', 'South Carolina')
 # USA
 plotDatContryUSA()
 
 #China
-plotDatContry('China')
+plotDatContry2('China')
 
 # Japan
 plotDatContry('Japan')
@@ -401,11 +446,10 @@ plotDatPhase('Italy','')
 plotDatContry('Morocco')
 
 plotDatContry('India')
+plotDatPhase('India','')
 
 # UK
 plotDatContry('United Kingdom')
-
-
 
 # plot of top 10 states and provinces
 # get the names of the 10 provinces
@@ -444,6 +488,7 @@ dat %>%
   ggplot(aes(x = Last_Update, y= Confirmed, color = `Province_State`))+
   geom_line()+
   geom_point(size = I(3), shape = 1)+
+  geom_dl(aes(label = Province_State), method = list(dl.trans(x = x -1,y=y+.25), "last.points", cex = 0.8)) +
   ylab(label="Count")+
   xlab(label="Date")+
   labs(title = "Coronavirus(2019-nCoV)",
@@ -455,6 +500,7 @@ dat %>%
   ggplot(aes(x = Last_Update, y= Existing, color = `Province_State`))+
   geom_line()+
   geom_point(size = I(3), shape = 1)+
+  geom_dl(aes(label = Province_State), method = list(dl.trans(x = x -1,y=y+.25), "last.points", cex = 0.8)) +
   ylab(label="Count")+
   xlab(label="Date")+
   labs(title = "Coronavirus(2019-nCoV)",
@@ -476,29 +522,11 @@ dat %>%
   ggplot(aes(x = Last_Update, y= Deaths, color = `Province_State`))+
   geom_line()+
   geom_point(size = I(3), shape = 1)+
+  geom_dl(aes(label = Province_State), method = list(dl.trans(x = x -1,y=y+.25), "last.points", cex = 0.8)) +
   ylab(label="Count")+
   xlab(label="Date")+
   labs(title = "Coronavirus(2019-nCoV)",
        subtitle = "Top 10 Deaths Cases By State, United States")
-
-# plot removing Hubei province
-top_13 =
-  dat %>% 
-  filter(grepl('China',`Country_Region`)& !grepl('Hubei',`Province_State`)) %>%
-  filter(Last_Update == max(Last_Update)) %>%
-  top_n(13,Confirmed) %>%
-  pull(`Province_State`) 
-
-dat %>% 
-  filter(grepl('China',`Country_Region`) & `Province_State` %in% top_13)  %>%
-  filter(Confirmed < 1500) %>%
-  ggplot(aes(x = Last_Update, y= Confirmed, color = `Province_State`))+
-  geom_line()+
-  geom_point(size = I(3), shape = 1)+
-  ylab(label="Count")+
-  xlab(label="Date")+
-  labs(title = "Coronavirus(2019-nCoV)",
-       subtitle = "Top 13 Confirmed Cases By Province, China Less Hubei")
 
 # Shanghai and Beijing only
 
@@ -513,9 +541,20 @@ dat %>%
   labs(title = "Wuhan Coronavirus(2019-nCoV)",
        subtitle = "Confirmed Cases Shanghai and Beijing")
 
+dat %>% 
+  filter(grepl('China',`Country_Region`) & `Province_State` %in% c('Shanghai','Beijing'))  %>%
+  group_by(`Province_State`) %>% 
+  ggplot(aes(x = Last_Update, y= Existing, color = `Province_State`))+
+  geom_line()+
+  geom_point(size = I(3), shape = 1)+
+  ylab(label="Count")+
+  xlab(label="Date")+
+  labs(title = "Wuhan Coronavirus(2019-nCoV)",
+       subtitle = "Confirmed Cases Shanghai and Beijing")
+
 
 # plot top 10 country's confirmed .
-top_10_Country =
+top_20_Country =
   dat %>% 
   filter(Last_Update == max(Last_Update)) %>%
   filter(!grepl('US',`Country_Region`) & !grepl('Other',`Country_Region`)  |
@@ -525,11 +564,11 @@ top_10_Country =
             Deaths = sum(Deaths),
             Recovered = sum(Recovered),
             Existing = sum(Existing)) %>%
-  top_n(15,Confirmed) %>%
+  top_n(20,Confirmed) %>%
   pull(`Country_Region`) 
 
 dat %>% 
-  filter(Country_Region %in% top_10_Country  & !grepl('County',`Province_State`) & 
+  filter(Country_Region %in% top_20_Country  & !grepl('County',`Province_State`) & 
            !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)))  %>%
   filter(Last_Update > '2020-03-15') %>%
   group_by(`Country_Region`, Last_Update) %>%
@@ -539,17 +578,31 @@ dat %>%
             Existing = sum(Existing)) %>%
   ggplot(aes(x = Last_Update, color = Country_Region))+
   geom_line(aes(y= Confirmed)) +
-
   geom_point(size = I(3), shape = 1,aes(y= Confirmed))+
+  geom_dl(aes(label = Country_Region,y=Confirmed), method = list(dl.trans(x = x -1,y=y+.25), "last.points", cex = 0.8)) +
   ylab(label="Count")+
   xlab(label="Date")+
   labs(title = "Coronavirus(2019-nCoV)",
        subtitle = "Top 10 Confirmed Cases ")
 
 # plot top 10 existing cases
+top_10_Country_Existing =
+  dat %>% 
+  filter(Last_Update == max(Last_Update)) %>%
+  filter(!grepl('US',`Country_Region`) & !grepl('Other',`Country_Region`)  |
+           `Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  group_by(`Country_Region`) %>%
+  summarise(Confirmed = sum(Confirmed),
+            Deaths = sum(Deaths),
+            Recovered = sum(Recovered),
+            Existing = sum(Existing)) %>%
+  top_n(10,Existing) %>%
+  pull(`Country_Region`) 
+
 dat %>% 
-  filter(Country_Region %in% top_10_Country & !grepl('County',`Province_State`) & 
+  filter(Country_Region %in% top_10_Country_Existing & !grepl('County',`Province_State`) & 
            !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)))  %>%
+  filter(Last_Update > '2020-03-15') %>%
   group_by(`Country_Region`, Last_Update) %>%
   summarise(Confirmed = sum(Confirmed),
             Deaths = sum(Deaths),
@@ -557,8 +610,8 @@ dat %>%
             Existing = sum(Existing)) %>%
   ggplot(aes(x = Last_Update, color = Country_Region))+
   geom_line(aes(y= Existing)) +
-  
   geom_point(size = I(2), shape = 1,aes(y= Existing))+
+  geom_dl(aes(label = Country_Region, y=Existing), method = list(dl.trans(x = x -1,y=y+.25), "last.points", cex = 0.8)) +
   ylab(label="Count")+
   xlab(label="Date")+
   labs(title = "Coronavirus(2019-nCoV)",
@@ -604,8 +657,6 @@ datCVirFlu %>%
                                 linetype="solid"))+
   labs(title = "Coronavirus(2019-nCoV)",
        subtitle = "Global")
-
-
 
 ######
 # lat lon for the provinces
@@ -800,16 +851,16 @@ SEIR.model.incubation.pop.cumsum.US <- function(t, b, g, c ,
 # gamma is 1 over the duration of the infection.
 # e is 1 over the incubation period
 
-SEIR.model.incubation.pop.cumsum.US(70,.50,1/14,1/14,infect = 5000, exposed = 900,population = 400000,country = 'US',province = 'New York', start_day = '2020-03-10' )
-SEIR.model.incubation.pop.cumsum.US(60,2.5,1/14,1/14,population = 75000,country = 'China',province = 'Hubei')
-SEIR.model.incubation.pop.cumsum.US(70,.55,1/14,1/14,infect = 150,
+SEIR.model.incubation.pop.cumsum.US(100,.50,1/14,1/14,infect = 5000, exposed = 900,population = 400000,country = 'US',province = 'New York', start_day = '2020-03-10' )
+SEIR.model.incubation.pop.cumsum.US(100,2.5,1/14,1/14,population = 75000,country = 'China',province = 'Hubei')
+SEIR.model.incubation.pop.cumsum.US(100,.55,1/14,1/14,infect = 150,
                                     exposed = 350,population = 60000,country = 'US',province = 'Michigan', start_day = '2020-03-10' )
 
 # Chi Square Test for Recovered cases and deaths
 
 datChiSq <-
   dat %>% 
-  filter(Country_Region %in% top_10_Country & !grepl('County',`Province_State`) & 
+  filter(Country_Region %in% top_20_Country & !grepl('County',`Province_State`) & 
            !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)))  %>%
   filter(Last_Update == max(Last_Update)) %>%
   group_by(`Country_Region`) %>%
@@ -856,7 +907,6 @@ dat %>%
   filter(Country_Region == 'US' & Last_Update == max(Last_Update) & !grepl(paste(notIn, collapse="|"), Province_State)) %>%
   select(Province_State,lat,lng) 
 
-
 StateChiPlot <-
   as.data.table(Xsq$observed - round(Xsq$expected,0)) %>%
   left_join(StateLatLng, by = c('Country' = 'Province_State')) %>%
@@ -865,7 +915,6 @@ StateChiPlot <-
   mutate(NN = (N - min(N))/(max(N) - min(N))) %>%
   pivot_wider(names_from = Outcome,values_from = c(N,NN))
   
-
 mapDat =
   StateChiPlot %>% 
   #left_join(datMap, by = c('Province_State' = 'Province_State','Country_Region' ='Country_Region')) %>%
@@ -886,8 +935,178 @@ mapDat =
   addPopups(lng=-90, lat=50, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Chi Square Analysis By State"),
             options = popupOptions(closeButton = FALSE))
 
-
 mapDat
+
+###############################
+# Case increase rate
+##############################
+# subset to USA
+notIn <- c('Princess', 'Guam', 'Samoa', 'Islands')
+
+datRateTop15 <-
+  dat %>%
+  filter(Country_Region == 'US' & !grepl(paste(notIn, collapse="|"), Province_State)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  select(Province_State,Deaths,Recovered,Confirmed,Last_Update) %>%
+    mutate(Existing = Confirmed - Deaths - Recovered) %>%
+    group_by(Province_State) %>%
+           mutate(Rate_Existing = Existing - lag(Existing,default = 0),
+                  Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+                  Rate_Deaths = Deaths - lag(Deaths,default = 0)) %>%
+    ungroup() %>%
+    filter(Last_Update > '2020-06-01') %>%
+    group_by(Province_State) %>%
+    summarise(Mean_Existing_Rate = mean(Rate_Existing),
+              Mean_Confirmed_Rate = mean(Rate_Confirmed),
+              Mean_Deaths_Rate = mean(Rate_Deaths)) %>%
+    arrange(desc(Mean_Confirmed_Rate)) %>%
+    top_n(15,Mean_Confirmed_Rate) %>%
+  pull(Province_State)
+
+dat %>%
+  filter(Country_Region == 'US' & !grepl(paste(notIn, collapse="|"), Province_State)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  select(Province_State,Deaths,Recovered,Confirmed,Last_Update) %>%
+  filter(Province_State %in% datRateTop15) %>%
+  group_by(Province_State) %>%
+  mutate(Existing = Confirmed - Deaths - Recovered,
+         Rate_Existing = Existing - lag(Existing,default = 0),
+         Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Deaths = Deaths - lag(Deaths,default = 0)) %>%
+  filter(Last_Update > '2020-06-01') %>%
+    ggplot(aes(x = Last_Update,color = Province_State)) +
+       geom_line(aes(y=Rate_Confirmed))+
+       geom_point(aes(y=Rate_Confirmed)) +
+       geom_dl(aes(label = Province_State, y=Rate_Confirmed), method = list(dl.trans(x = x -1,y=y+.25), "last.points", cex = 0.8)) 
+  
+#  Look at acceleration
+dat %>%
+  filter(Country_Region == 'US' & !grepl(paste(notIn, collapse="|"), Province_State)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  select(Province_State,Deaths,Recovered,Confirmed,Last_Update) %>%
+  filter(Province_State %in% datRateTop15) %>%
+  group_by(Province_State) %>%
+  mutate(#Existing = Confirmed - Deaths - Recovered,
+         #Rate_Existing = Existing - lag(Existing,default = 0),
+         Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Deaths = Deaths - lag(Deaths,default = 0),
+         #Accel_Existing = Rate_Existing - lag(Rate_Existing,default = 0),
+         Accel_Confirmed = Rate_Confirmed - lag(Rate_Confirmed,default = 0),
+         Accel_Deaths = Rate_Deaths - lag(Rate_Deaths,default = 0)) %>%
+  filter(Last_Update > max(Last_Update) - 14)%>%
+  summarise(Mean_Rate_Confirmed = mean(Rate_Confirmed),
+            Mean_Accel_Confirmed = mean(Accel_Confirmed))
+
+
+dat %>%
+  filter(Country_Region == 'US' & !grepl(paste(notIn, collapse="|"), Province_State)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  select(Province_State,Deaths,Recovered,Confirmed,Last_Update) %>%
+  group_by(Province_State) %>%
+  mutate(Confirmed = zoo::rollapply(Confirmed,4,mean,align='right',fill=0),
+         Recovered = zoo::rollapply(Recovered,4,mean,align='right',fill=0),
+         Deaths = zoo::rollapply(Deaths,4,mean,align='right',fill=0)) %>%
+  mutate(#Existing = Confirmed - Deaths - Recovered,
+    #Rate_Existing = Existing - lag(Existing,default = 0),
+    Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+    Rate_Deaths = Deaths - lag(Deaths,default = 0),
+    #Accel_Existing = Rate_Existing - lag(Rate_Existing,default = 0),
+    Accel_Confirmed = Rate_Confirmed - lag(Rate_Confirmed,default = 0),
+    Accel_Deaths = Rate_Deaths - lag(Rate_Deaths,default = 0)) %>%
+  filter(Last_Update == max(Last_Update) )
+
+datAccelTop15 <-
+  dat %>%
+  filter(Country_Region == 'US' & !grepl(paste(notIn, collapse="|"), Province_State)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  select(Province_State,Deaths,Recovered,Confirmed,Last_Update) %>%
+  group_by(Province_State) %>%
+  mutate(Confirmed = zoo::rollapply(Confirmed,4,mean,align='right',fill=0),
+         Recovered = zoo::rollapply(Recovered,4,mean,align='right',fill=0),
+         Deaths = zoo::rollapply(Deaths,4,mean,align='right',fill=0)) %>%
+  mutate(#Existing = Confirmed - Deaths - Recovered,
+    #Rate_Existing = Existing - lag(Existing,default = 0),
+    Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+    Rate_Deaths = Deaths - lag(Deaths,default = 0),
+    #Accel_Existing = Rate_Existing - lag(Rate_Existing,default = 0),
+    Accel_Confirmed = Rate_Confirmed - lag(Rate_Confirmed,default = 0),
+    Accel_Deaths = Rate_Deaths - lag(Rate_Deaths,default = 0)) %>%
+  ungroup() %>%
+  filter(Last_Update == max(Last_Update) ) %>%
+  arrange(desc(Accel_Confirmed)) %>%
+  top_n(15,Accel_Confirmed) %>%
+  pull(Province_State)
+
+datAccelTop15
+
+dat %>%
+  filter(Country_Region == 'US' & !grepl(paste(notIn, collapse="|"), Province_State)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  select(Province_State,Deaths,Recovered,Confirmed,Last_Update) %>%
+  filter(Province_State %in% datAccelTop15) %>%
+  group_by(Province_State) %>%
+  mutate(Existing = Confirmed - Deaths - Recovered,
+         Rate_Existing = Existing - lag(Existing,default = 0),
+         Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Deaths = Deaths - lag(Deaths,default = 0)) %>%
+  filter(Last_Update > '2020-06-01') %>%
+  ggplot(aes(x = Last_Update,color = Province_State)) +
+  geom_line(aes(y=Rate_Confirmed))+
+  geom_point(aes(y=Rate_Confirmed)) +
+  geom_dl(aes(label = Province_State, y= Rate_Confirmed), method = list(dl.trans(x = x -1,y=y+.25), "last.points", cex = 0.8)) 
+
+dat %>%
+  filter(Country_Region == 'US' & !grepl(paste(notIn, collapse="|"), Province_State)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  select(Province_State,Deaths,Recovered,Confirmed,Last_Update) %>%
+  group_by(Province_State) %>%
+  mutate(Confirmed = zoo::rollapply(Confirmed,4,mean,align='right',fill=0),
+         Recovered = zoo::rollapply(Recovered,4,mean,align='right',fill=0),
+         Deaths = zoo::rollapply(Deaths,4,mean,align='right',fill=0)) %>%
+  mutate(#Existing = Confirmed - Deaths - Recovered,
+    #Rate_Existing = Existing - lag(Existing,default = 0),
+    Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+    Rate_Deaths = Deaths - lag(Deaths,default = 0),
+    #Accel_Existing = Rate_Existing - lag(Rate_Existing,default = 0),
+    Accel_Confirmed = Rate_Confirmed - lag(Rate_Confirmed,default = 0),
+    Accel_Deaths = Rate_Deaths - lag(Rate_Deaths,default = 0)) %>%
+  ungroup() %>%
+  filter(Last_Update == max(Last_Update) ) %>%
+  arrange(Accel_Confirmed) %>%
+  top_n(-15,Accel_Confirmed)
+
+datAccelBottom15 <-
+  dat %>%
+  filter(Country_Region == 'US' & !grepl(paste(notIn, collapse="|"), Province_State)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  select(Province_State,Deaths,Recovered,Confirmed,Last_Update) %>%
+  group_by(Province_State) %>%
+  mutate(Confirmed = zoo::rollapply(Confirmed,4,mean,align='right',fill=0),
+         Recovered = zoo::rollapply(Recovered,4,mean,align='right',fill=0),
+         Deaths = zoo::rollapply(Deaths,4,mean,align='right',fill=0)) %>%
+  mutate(#Existing = Confirmed - Deaths - Recovered,
+    #Rate_Existing = Existing - lag(Existing,default = 0),
+    Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+    Rate_Deaths = Deaths - lag(Deaths,default = 0),
+    #Accel_Existing = Rate_Existing - lag(Rate_Existing,default = 0),
+    Accel_Confirmed = Rate_Confirmed - lag(Rate_Confirmed,default = 0),
+    Accel_Deaths = Rate_Deaths - lag(Rate_Deaths,default = 0)) %>%
+  ungroup() %>%
+  filter(Last_Update == max(Last_Update) ) %>%
+  arrange(Accel_Confirmed) %>%
+  top_n(-15,Accel_Confirmed) %>%
+  pull(Province_State)
+
+datAccelBottom15
+
+dat %>%
+  filter(Country_Region == 'US' & !grepl(paste(notIn, collapse="|"), Province_State)& !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  select(Province_State,Deaths,Recovered,Confirmed,Last_Update) %>%
+  filter(Province_State %in% datAccelBottom15) %>%
+  group_by(Province_State) %>%
+  mutate(Existing = Confirmed - Deaths - Recovered,
+         Rate_Existing = Existing - lag(Existing,default = 0),
+         Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Deaths = Deaths - lag(Deaths,default = 0)) %>%
+  filter(Last_Update > '2020-06-10') %>%
+  ggplot(aes(x = Last_Update,color = Province_State)) +
+  geom_line(aes(y=Rate_Confirmed))+
+  geom_point(aes(y=Rate_Confirmed)) +
+  geom_dl(aes(label = Province_State, y = Rate_Confirmed), method = list(dl.trans(x = x -1,y=y+.25), "last.points", cex = 0.8)) +
+  scale_y_continuous(limits = c(0,2000)) 
+ 
 
 #########################
 # Estimate the number of people in a room to have 50% of a person confirmed
@@ -921,83 +1140,26 @@ probContact[ , prob_exist := bday(n = max(x), pr = probUsa$total_existing/327200
 
 probContact <- melt(probContact, id.vars = c('x'))
 
-probContact[value >= 0.48 & value <= 0.51,max(x)]
+probContact[value >= 0.48 & value <= 0.52,max(x)]
 
 ggplot(data = probContact, aes(x=x,y=value,color = variable))+
   geom_line() +
   geom_hline(yintercept = 0.5)+
   geom_vline(xintercept = c(probContact[value >= 0.499 & value <= 0.501,max(x)],probContact[value >= 0.499 & value <= 0.501,min(x)]))
 
-
-## Michigan dat
-
-datMI<-data.table()
-##load data
-
-files<-list.files("R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports/",full.names=TRUE)
-print(files)
-for(i in 1:(length(files)-1)){
-  data.temp<-fread(files[i],header =TRUE) 
-  
-  if (ncol(data.temp) == 12) {
-    data.temp = select(data.temp, `Province_State`, `Country_Region`,`Admin2`,`Last_Update`, `Confirmed`, `Deaths`, `Recovered`, Lat, Long_ )
-  }else{
-    data.temp = data.table(Province_State = 'xx', `Country_Region` = 'xx',`Admin2`= 'xx',`Last_Update`= '1900-01-01', `Confirmed` = NA, `Deaths`= NA, `Recovered` = NA , Lat = NA, Long_ =NA)
-  }
-  
-  #names(data.temp) <- c('Province_State', 'Country_Region','Last_Update', 'Confirmed', 'Deaths', 'Recovered' )
-  
-  data.temp <-
-    data.temp %>%
-    mutate(Last_Update = parse_date_time(Last_Update,c("mdy_HM","ymd_HMS")))%>%
-    mutate(Last_Update = max(Last_Update),
-           Confirmed = ifelse(is.na(Confirmed),0,Confirmed),
-           Deaths = ifelse(is.na(Deaths),0,Deaths),
-           Recovered = ifelse(is.na(Recovered),0,Recovered)) %>%
-    mutate(Existing = Confirmed - Deaths - Recovered) %>%
-    
-    as.data.table()
-  datMI<-rbind(datMI,data.temp)
-  datMI<-
-    datMI %>%
-    filter(Country_Region == 'US') 
-    
-}
-
-datMI =
-  datMI %>%
-  filter(Province_State == 'Michigan') %>%
-  rename(c('Province_State' = 'Province_State' , 'Country_Region' = 'Country_Region','Admin2' = 'Admin2','lat'= 'Lat','lng'='Long_' )) %>%
-  mutate(Existing = Confirmed - Deaths - Recovered) 
-  
-  
-top_10_MI_State =
-  datMI %>% 
-  filter(Last_Update == max(Last_Update) & Admin2 != 'Unassigned') %>%
-  group_by(`Admin2`) %>%
-  summarise(Confirmed = sum(Confirmed),
-            Deaths = sum(Deaths),
-            Recovered = sum(Recovered),
-            Existing = sum(Existing)) %>%
-  top_n(10,Confirmed) %>%
-  pull(`Admin2`) 
-
-datMI %>%
-  filter(Province_State == 'Michigan' & Admin2 %in% top_10_MI_State) %>%
-  group_by(Admin2, Last_Update) %>%
-  ggplot(aes(Last_Update,Confirmed, color = Admin2)) +
-  geom_line() +
-  geom_point(shape = 1)
+## Michigan data
 
 probMichian =
-  datMI %>%
+  dat %>% 
+  filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
   filter(Last_Update == max(Last_Update)) %>%
+  filter(Province_State == 'Michigan') %>%
   summarise(total_confirmed = sum(Confirmed),
             total_existing = sum(Existing))
 
 # population of the Michigan is approximately 9996000 Probablity for 50% chance of contact
 
-probContact <- data.table(x= seq(from = 1, to = 75, by = 1))
+probContact <- data.table(x= seq(from = 1, to = 100, by = 1))
 probContact[ , prob_conf := bday(n = max(x), pr = probMichian$total_confirmed/9996000)]
 probContact[ , prob_exist := bday(n = max(x), pr = probMichian$total_existing/9996000)]
 
@@ -1011,40 +1173,13 @@ ggplot(data = probContact, aes(x=x,y=value,color = variable))+
   geom_vline(xintercept = c(probContact[value >= 0.499 & value <= 0.501,max(x)],probContact[value >= 0.499 & value <= 0.501,min(x)]))
 
 
-probMiWayne =
-  datMI %>%
-  filter(Last_Update == max(Last_Update),
-         Admin2 == 'Wayne' | Admin2 == 'Oakland') %>%
-  summarise(total_confirmed = sum(Confirmed),
-            total_existing = sum(Existing))
 
-# population of the Michigan is approximately 9996000 Probablity for 50% chance of contact
-
-probContact <- data.table(x= seq(from = 1, to = 50, by = 1))
-probContact[ , prob_conf := bday(n = max(x), pr = probMiWayne$total_confirmed/3000000)]
-probContact[ , prob_exist := bday(n = max(x), pr = probMiWayne$total_existing/3000000)]
-
-probContact <- melt(probContact, id.vars = c('x'))
-
-probContact[value >= 0.47 & value <= 0.51,max(x)]
-
-ggplot(data = probContact, aes(x=x,y=value,color = variable))+
-  geom_line() +
-  geom_hline(yintercept = 0.5)+
-  geom_vline(xintercept = c(probContact[value >= 0.499 & value <= 0.501,max(x)],probContact[value >= 0.499 & value <= 0.501,min(x)]))
-
-
-
-  
-     
-  
-  
-  
+#Region Plots
   dat<-data.table()
   ##load data
   
   files<-list.files("R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports/",full.names=TRUE)
-  print(files)
+  #print(files)
   for(i in 1:(length(files)-1)){
     data.temp<-fread(files[i],header =TRUE) 
     
@@ -1070,7 +1205,6 @@ ggplot(data = probContact, aes(x=x,y=value,color = variable))+
     dat<-
       dat %>%
       filter(Country_Region == 'US') 
-    
   }
   
 datMidWest =
@@ -1091,7 +1225,7 @@ mapDat =
              popup = ~`Admin2`,
              label = ~Confirmed) %>%
   addCircles(lng = ~lng, lat = ~lat, weight = 1,
-             radius = ~(Existing) * 1, 
+             radius = ~(Existing) * 3, 
              color = 'red') %>%
   addPopups(lng=-80, lat=45, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
             options = popupOptions(closeButton = FALSE)) %>%
@@ -1099,6 +1233,32 @@ mapDat =
             options = popupOptions(closeButton = FALSE))
 
 mapDat  
+
+datSouth =
+  dat %>%
+  filter(Province_State == 'Florida' |Province_State == 'Georgia' | Province_State == 'Alabama' | Province_State == 'Mississippi' | 
+           Province_State == 'South Carolina' | Province_State == 'North Carolina'| Province_State == 'Louisiana' 
+         | Province_State == 'Texas' | Province_State == 'Arkansas'| Province_State == 'Tennessee' |
+           Province_State == 'Arizona' | Province_State == 'New Mexico') %>%
+  rename(c('Province_State' = 'Province_State' , 'Country_Region' = 'Country_Region','Admin2' = 'Admin2','lat'= 'Lat','lng'='Long_' )) %>%
+  mutate(Existing = Confirmed - Deaths - Recovered)  
+
+mapDat =
+  datSouth %>% 
+  group_by(`Admin2`)  %>% 
+  filter(`Last_Update` == max(`Last_Update`)) %>%
+  select(`Admin2`,lng,lat,Confirmed,Existing) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(Confirmed) * 3, 
+             popup = ~`Admin2`,
+             label = ~Confirmed) %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(Existing) * 3, 
+             color = 'red') 
+mapDat  
+
 
 datUSA <-
 dat %>%
@@ -1113,19 +1273,14 @@ mapDat =
   leaflet() %>%
   addTiles() %>%
   addCircles(lng = ~lng, lat = ~lat, weight = 1,
-             radius = ~(Confirmed) * 1, 
+             radius = ~(Confirmed) * 0, 
              popup = ~`Admin2`,
              label = ~Confirmed) %>%
   addCircles(lng = ~lng, lat = ~lat, weight = 1,
-             radius = ~(Existing) * 1, 
-             color = 'red') %>%
-  addPopups(lng=-80, lat=50, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
-            options = popupOptions(closeButton = FALSE)) %>%
-  addPopups(lng=-80, lat=55, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Confirmed Infection Counts USA",max(dat$`Last Update`)),
-            options = popupOptions(closeButton = FALSE))
+             radius = ~(Existing) * 2, 
+             color = 'red')
 
 mapDat  
-
 
 datMI =  
   dat %>%
@@ -1146,11 +1301,224 @@ mapDat =
              label = ~Confirmed) %>%
   addCircles(lng = ~lng, lat = ~lat, weight = 1,
              radius = ~(Existing) * 2, 
-             color = 'red') %>%
-  addPopups(lng=-80, lat=45, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
-            options = popupOptions(closeButton = FALSE)) %>%
-  addPopups(lng=-80, lat=47, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Confirmed Infection Counts Michigan",max(dat$`Last Update`)),
-            options = popupOptions(closeButton = FALSE))
+             color = 'red') 
 
 mapDat  
+
+
+#########################################
+# Look at number of test vs. infections / infection rate
+#########################################
+
+# Load data to pull number of test data
+
+files<-list.files("R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports_us/",full.names=TRUE)
+datUS <- data.table()
+
+for(i in 1:(length(files)-1)){
+  
+  data.temp<-fread(files[i],header =TRUE)
+  
+  #data.temp = select(data.temp, `Province_State`, `Country_Region`,`Last_Update`, `Confirmed`, `Deaths`, `Recovered` )
+  #names(data.temp) <- c('Province_State', 'Country_Region','Last_Update', 'Confirmed', 'Deaths', 'Recovered' )
+  
+  data.temp <-
+    data.temp %>%
+    mutate(Last_Update = parse_date_time(Last_Update,c("mdy_HM","ymd_HMS")))%>%
+    mutate(Last_Update = max(Last_Update),
+           Confirmed = ifelse(is.na(Confirmed),0,Confirmed),
+           Deaths = ifelse(is.na(Deaths),0,Deaths),
+           Recovered = ifelse(is.na(Recovered),0,Recovered)) %>%
+    mutate(Country_Region = ifelse(grepl('Mainland China',Country_Region),'China',Country_Region)) %>%
+    filter(!is.na(Last_Update)) %>%
+    filter(!grepl('Guam',Province_State) | !grepl('Princess',Province_State) | !grepl('Island',Province_State)) %>%
+    filter(Province_State != 'Recovered' ) %>%
+    as.data.table()
+  datUS<-rbind(datUS,data.temp)
+}
+
+
+# Number of test for each positive by state
+
+datUS %>%
+  filter(Province_State %in% datAccelTop15) %>%
+  mutate(Existing = Confirmed - Deaths - Recovered) %>%
+  group_by(Last_Update,Province_State) %>%
+  summarise(Confirmed = sum(Confirmed),
+            Deaths = sum(Deaths),
+            Recovered = sum(Recovered),
+            Existing = sum(Existing),
+            Test = sum(People_Tested,na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(Last_Update = date(Last_Update)) %>%
+  group_by(Last_Update,Province_State) %>%
+  mutate(Rate_Existing = Existing - lag(Existing,default = 0),
+         Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Deaths = Deaths - lag(Deaths,default = 0),
+         Rate_Test = Test - lag(Test,default = 0)) %>% 
+  mutate(Accel_Existing = Rate_Existing - lag(Rate_Existing,default = 0),
+         Accel_Confirmed = Rate_Confirmed - lag(Rate_Confirmed,default = 0),
+         Accel_Deaths = Rate_Deaths - lag(Rate_Deaths,default = 0),
+         Accel_Test = Rate_Test - lag(Rate_Test,default = 0),
+         Test_Confirmed = Rate_Test/Rate_Confirmed) %>%
+  filter(Last_Update > '2020-05-01') %>%
+  ggplot(aes(x=Last_Update, color = Province_State)) +
+           geom_line(aes(y=Test_Confirmed)) + 
+           geom_point(aes(y=Test_Confirmed),shape = 1) 
+
+# increase in testing rate vs. increase on confirmed cases rate
+datUS %>%
+  mutate(Existing = Confirmed - Deaths - Recovered) %>%
+  group_by(Last_Update) %>%
+  summarise(Confirmed = sum(Confirmed),
+            Deaths = sum(Deaths),
+            Recovered = sum(Recovered),
+            Existing = sum(Existing),
+            Test = sum(People_Tested,na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(Last_Update = date(Last_Update)) %>%
+  group_by(Last_Update) %>%
+  mutate(Rate_Existing = Existing - lag(Existing,default = 0),
+         Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Deaths = Deaths - lag(Deaths,default = 0),
+         Rate_Test = Test - lag(Test,default = 0)) %>% 
+  mutate(Accel_Existing = Rate_Existing - lag(Rate_Existing,default = 0),
+         Accel_Confirmed = Rate_Confirmed - lag(Rate_Confirmed,default = 0),
+         Accel_Deaths = Rate_Deaths - lag(Rate_Deaths,default = 0),
+         Accel_Test = Rate_Test - lag(Rate_Test,default = 0)) %>%
+  filter(Last_Update > '2020-05-01') %>%
+  as.data.table() %>%
+  ggplot(aes(x=Last_Update)) +
+  geom_point(aes(y=Accel_Confirmed))+
+  geom_point(color = 'red',aes(y=Accel_Test)) +
+  xlab(label = "Date") +
+  ylab(label = "num/day/day")
+  
+
+#  Cumlative test vs. cumlative confirmed cases
+datUS %>%
+  mutate(Existing = Confirmed - Deaths - Recovered) %>%
+  group_by(Last_Update) %>%
+  summarise(Confirmed = sum(Confirmed),
+            Deaths = sum(Deaths),
+            Recovered = sum(Recovered),
+            Existing = sum(Existing),
+            Test = sum(People_Tested,na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(Last_Update = date(Last_Update)) %>%
+  group_by(Last_Update) %>%
+  mutate(Rate_Existing = Existing - lag(Existing,default = 0),
+         Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Deaths = Deaths - lag(Deaths,default = 0),
+         Rate_Test = Test - lag(Test,default = 0)) %>% 
+  mutate(Accel_Existing = Rate_Existing - lag(Rate_Existing,default = 0),
+         Accel_Confirmed = Rate_Confirmed - lag(Rate_Confirmed,default = 0),
+         Accel_Deaths = Rate_Deaths - lag(Rate_Deaths,default = 0),
+         Accel_Test = Rate_Test - lag(Rate_Test,default = 0)) %>%
+  filter(Last_Update > '2020-05-01') %>%
+  ggplot(aes(x=Last_Update)) +
+  geom_point(aes(y=Confirmed))+
+  geom_point(color = 'red',aes(y=Test)) +
+  xlab(label = "Date") +
+  ylab(label = "Cumlative Sum (Confirmed | Test)")
+
+
+notIn <- c('Princess', 'Guam', 'Samoa', 'Islands')
+
+datUS %>%
+  filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
+  mutate(Last_Update = date(Last_Update)) %>%
+  group_by(Province_State) %>%
+  mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Test = People_Tested - lag(People_Tested,default = 0)) %>%
+  select(Province_State,Last_Update,Confirmed,People_Tested,Rate_Confirmed,Rate_Test) %>%
+  inner_join(select(usStatePopulation,`Geographic Area`,'2019'), by = c('Province_State' = 'Geographic Area')) %>%
+  mutate(`2019` = as.numeric(gsub(",","",`2019`,fixed=TRUE))) %>%
+  rename(Pop = `2019`) %>%
+  ungroup() %>%
+  mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
+         test_per_million = (Rate_Test/Pop)*1000000) %>%
+  filter(Last_Update > '2020-05-01')
+###########################################################################################################
+
+#mapDat =
+datUS %>%
+  filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
+  mutate(Last_Update = date(Last_Update)) %>%
+  group_by(Province_State) %>%
+  mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Test = People_Tested - lag(People_Tested,default = 0)) %>%
+  select(Province_State,Last_Update,Confirmed,People_Tested,Rate_Confirmed,Rate_Test,Lat,Long_) %>%
+  inner_join(select(usStatePopulation,`Geographic Area`,'2019'), by = c('Province_State' = 'Geographic Area')) %>%
+  mutate(`2019` = as.numeric(gsub(",","",`2019`,fixed=TRUE))) %>%
+  rename(Pop = `2019`, lng = Long_, lat = Lat) %>%
+  ungroup() %>%
+  mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
+         test_per_million = (Rate_Test/Pop)*1000000,
+         test_per_case = round(Rate_Test/Rate_Confirmed,1),
+         test_per_case_mil = round(test_per_million/conf_per_million,1)) %>%
+  filter(test_per_million > 0,
+         Last_Update==max(Last_Update),
+         test_per_case >=0)  %>%
+  select(Province_State,lng,lat,test_per_case) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircles(lng = ~lng, lat = ~lat, weight = 1,
+             radius = ~(test_per_case) * 1000, 
+             popup = ~Province_State,
+             label = ~test_per_case) 
+#mapDat 
+
+
+#  nomalized by state population 
+
+rateLines <- data.table(slope = c(2,5,10,20,50,100),intercept = c(0,0,0,0,0,0))
+
+datUS %>%
+  filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
+  mutate(Last_Update = date(Last_Update)) %>%
+  group_by(Province_State) %>%
+  mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Test = People_Tested - lag(People_Tested,default = 0)) %>%
+  select(Province_State,Last_Update,Confirmed,People_Tested,Rate_Confirmed,Rate_Test) %>%
+  inner_join(select(usStatePopulation,`Geographic Area`,'2019'), by = c('Province_State' = 'Geographic Area')) %>%
+  mutate(`2019` = as.numeric(gsub(",","",`2019`,fixed=TRUE))) %>%
+  rename(Pop = `2019`) %>%
+  ungroup() %>%
+  mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
+         test_per_million = (Rate_Test/Pop)*1000000,
+         test_per_case = Rate_Test/Rate_Confirmed) %>%
+  filter(Last_Update == '2020-06-17' |Last_Update == '2020-06-01' |Last_Update == '2020-05-01',
+         test_per_million >0) %>%
+  ggplot(aes(x=test_per_case)) +
+  geom_histogram() +
+  #geom_text(aes(x=conf_per_million,y=test_per_million,label=Province_State),nudge_x = 5, nudge_y = 75) +
+  #geom_abline(data = rateLines,aes(slope = slope,intercept = intercept),linetype = 2, color = 'grey') +
+  facet_grid( .~Last_Update) +
+  theme(legend.position = "none")
+
+#  Confirmed per million vs. test per million, rolling seven day average.
+datUS %>%
+  filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
+  mutate(Last_Update = date(Last_Update)) %>%
+  group_by(Province_State) %>%
+  mutate(Confirmed = zoo::rollapply(Confirmed,7,mean,align='right',fill=0),
+         People_Tested = zoo::rollapply(People_Tested,7,mean,align='right',fill=0)) %>%
+  mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Test = People_Tested - lag(People_Tested,default = 0)) %>%
+  select(Province_State,Last_Update,Confirmed,People_Tested,Rate_Confirmed,Rate_Test) %>%
+  inner_join(select(usStatePopulation,`Geographic Area`,'2019'), by = c('Province_State' = 'Geographic Area')) %>%
+  mutate(`2019` = as.numeric(gsub(",","",`2019`,fixed=TRUE))) %>%
+  rename(Pop = `2019`) %>%
+  ungroup() %>%
+  mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
+         test_per_million = (Rate_Test/Pop)*1000000) %>%
+  filter(Last_Update == '2020-06-17' |Last_Update == '2020-06-01' |Last_Update == '2020-05-01',
+         test_per_million >0) %>%
+  ggplot(aes(x=conf_per_million,y=test_per_million,color=Province_State)) +
+  geom_point() +
+  geom_text(aes(x=conf_per_million,y=test_per_million,label=Province_State),nudge_x = 5, nudge_y = 75) +
+  geom_abline(data = rateLines,aes(slope = slope,intercept = intercept),linetype = 2, color = 'grey') +
+  facet_grid( .~Last_Update) +
+  theme(legend.position = "none")
 
