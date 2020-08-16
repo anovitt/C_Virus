@@ -24,6 +24,15 @@ datUS %>%
   geom_line() +
   geom_point(shape = 1)
 
+datUS %>%
+  filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
+  mutate(Existing = Confirmed - Deaths - Recovered) %>%
+  arrange(Province_State) %>%
+  ggplot(aes(y=Province_State,x=Deaths)) +
+  geom_line() +
+  geom_point(shape = 1)
+
+#  nomalized by state population 
 
 datUS %>%
   filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
@@ -37,10 +46,37 @@ datUS %>%
   geom_line() +
   geom_point(shape = 1)
 
-#  nomalized by state population 
+
+top_75_Country =
+  dat %>% 
+  filter(Last_Update == max(Last_Update)) %>%
+  filter(!grepl('US',`Country_Region`) & !grepl('Other',`Country_Region`)  |
+           `Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
+  group_by(`Country_Region`) %>%
+  summarise(Confirmed = sum(Confirmed),
+            Deaths = sum(Deaths),
+            Recovered = sum(Recovered),
+            Existing = sum(Existing)) %>%
+  top_n(75,Confirmed) %>%
+  pull(`Country_Region`) 
+
+dat %>% 
+  filter(Country_Region %in% top_75_Country  & !grepl('County',`Province_State`) & 
+           !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)))  %>%
+  filter(Last_Update > '2020-03-15') %>%
+  group_by(`Country_Region`, Last_Update) %>%
+  summarise(Confirmed = sum(Confirmed),
+            Deaths = sum(Deaths),
+            Recovered = sum(Recovered),
+            Existing = sum(Existing)) %>%
+  arrange(Country_Region) %>%
+  ggplot(aes(y=Country_Region,x=Confirmed)) +
+  geom_line() +
+  geom_point(shape = 1)
+
+# US testing rate normalized vs. confirmed cases
 
 rateLines <- data.table(slope = c(2,5,10,20,50,100),intercept = c(0,0,0,0,0,0))
-
 
 #  Confirmed per million vs. test per million, rolling seven day average.
 datUS %>%
@@ -58,7 +94,8 @@ datUS %>%
   ungroup() %>%
   mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
          test_per_million = (Rate_Test/Pop)*1000000) %>%
-  filter(Last_Update == Sys.Date()-1 |Last_Update == '2020-06-01' |Last_Update == '2020-05-01' |Last_Update == '2020-07-01',
+  filter(Last_Update == Sys.Date()-1 |Last_Update == '2020-06-01' |Last_Update == '2020-05-01' |
+           Last_Update == '2020-07-01' | Last_Update =='2020-08-01',
          test_per_million >0) %>%
   ggplot(aes(x=conf_per_million,y=test_per_million,color=Province_State)) +
   geom_point() +
@@ -66,6 +103,34 @@ datUS %>%
   geom_abline(data = rateLines,aes(slope = slope,intercept = intercept),linetype = 2, color = 'grey') +
   facet_grid( .~Last_Update) +
   theme(legend.position = "none")
+
+In <- c('Texas', 'Florida', 'Alabama', 'Georgia','California')
+
+datUS %>%
+  filter(grepl(paste(In, collapse="|"),Province_State)) %>%
+  mutate(Last_Update = date(Last_Update)) %>%
+  group_by(Province_State) %>%
+  mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Test = People_Tested - lag(People_Tested,default = 0)) %>%
+  mutate(Rate_Confirmed = zoo::rollapply(Rate_Confirmed,5,mean,align='right',fill=0),
+         Rate_Test = zoo::rollapply(Rate_Test,5,mean,align='right',fill=0)) %>%
+  select(Province_State,Last_Update,Confirmed,People_Tested,Rate_Confirmed,Rate_Test) %>%
+  inner_join(select(usStatePopulation,`Geographic Area`,'2019'), by = c('Province_State' = 'Geographic Area')) %>%
+  mutate(`2019` = as.numeric(gsub(",","",`2019`,fixed=TRUE))) %>%
+  rename(Pop = `2019`) %>%
+  ungroup() %>%
+  mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
+         test_per_million = (Rate_Test/Pop)*1000000) %>%
+  filter(Last_Update == Sys.Date()-1 |Last_Update == '2020-06-01' |Last_Update == '2020-05-01' |
+           Last_Update == '2020-07-01' | Last_Update =='2020-08-01',
+         test_per_million >0) %>%
+  ggplot(aes(x=conf_per_million,y=test_per_million,color=Province_State)) +
+  geom_point() +
+  geom_text(aes(x=conf_per_million,y=test_per_million,label=Province_State),nudge_x = 5, nudge_y = 75) +
+  geom_abline(data = rateLines,aes(slope = slope,intercept = intercept),linetype = 2, color = 'grey') +
+  facet_grid( .~Last_Update) +
+  theme(legend.position = "none")
+
 
 # Plots of various countries and states
 
@@ -699,6 +764,60 @@ dat %>%
          Rate_Deaths = Deaths - lag(Deaths,default = 0),
          Country_Region = 'USA') %>%
   pull(Rate_Confirmed) 
+
+s1 <- rateConf
+samp.rate <- 1
+timeArray <- (0:(length(s1-1)) / samp.rate)
+
+timeDt <- data.table(tm = timeArray, amp = s1)
+timeDt[, tm := tm ]
+#timeDt[amp < 0.4 & amp > -0.4,]
+
+plottime <-
+  ggplot(data = timeDt, aes(x=tm,y=amp))+
+  geom_point(size = I(0)) +
+  xlab(label="time (days)")+
+  ylab(label="Confirmed Cases" )+
+  labs(title= "Confirmed Cases USA vs Time: ")+
+  theme(plot.title = element_text(lineheight = 0.8, face="bold"))
+plottime
+
+# Frequency content
+n <- length(timeDt$amp) #number of samples
+p <- fft(timeDt$amp)  #fft
+
+nUniquePts <- ceiling((n+1)/2)
+p <- p[1:nUniquePts] #select just the first half since the second half 
+# is a mirror image of the first
+p <- abs(p)  #take the absolute value, or the magnitude 
+
+
+p <- p / n #scale by the number of points so that
+# the magnitude does not depend on the length 
+# of the signal or on its sampling frequency  
+p <- p^2  # square it to get the power 
+
+# multiply by two (see technical document for details)
+# odd nfft excludes Nyquist point
+if (n %% 2 > 0){
+  p[2:length(p)] <- p[2:length(p)]*2 # we've got odd number of points fft
+} else {
+  p[2: (length(p) -1)] <- p[2: (length(p) -1)]*2 # we've got even number of points fft
+}
+
+freqArray <- (0:(nUniquePts-1)) * (samp.rate / n) #  create the frequency array 
+
+freq_Data_Table <- data.table(Frequency = freqArray,Power = p)
+
+plot_FFT <-
+  ggplot(data = freq_Data_Table[Power < 2.5*10^8,],aes(x=Frequency,y=Power))+
+  geom_point(size=I(3)) +
+  #geom_text(data = freq_Data_Table[Power < 1e-06 &Power > 1.5e-07 & Frequency < 2000,],nudge_x = 10,aes(x=Frequency,y=Power,label = round(Frequency,0)))+
+  xlab(label="Frequency (1/Day)")+
+  ylab(label="Power " )+
+  labs(title= "Confimred Rate FFT: ")+
+  theme(plot.title = element_text(lineheight = 0.8, face="bold"))
+plot_FFT
 
 plot.frequency.spectrum <- function(X.k, xlimits=c(0,length(X.k))) {
   plot.data  <- cbind(0:(length(X.k)-1), Mod(X.k))

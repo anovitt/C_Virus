@@ -404,7 +404,7 @@ plotDatContryUSA <- function(){
     geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
     geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
     geom_point(size = I(3), shape = 1,aes(y=Deaths, color = "Deaths"))+
-    geom_hline(yintercept = seq(from = 100000, to = 5000000, by = 1000000))+
+    geom_hline(yintercept = seq(from = 100000, to = 6000000, by = 1000000))+
     
     ylab(label="Count")+
     xlab(label="Date")+
