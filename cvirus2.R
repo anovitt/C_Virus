@@ -46,8 +46,7 @@ datUS %>%
   geom_line() +
   geom_point(shape = 1)
 
-
-top_75_Country =
+top_125_Country =
   dat %>% 
   filter(Last_Update == max(Last_Update)) %>%
   filter(!grepl('US',`Country_Region`) & !grepl('Other',`Country_Region`)  |
@@ -57,11 +56,11 @@ top_75_Country =
             Deaths = sum(Deaths),
             Recovered = sum(Recovered),
             Existing = sum(Existing)) %>%
-  top_n(75,Confirmed) %>%
+  top_n(125,Confirmed) %>%
   pull(`Country_Region`) 
 
 dat %>% 
-  filter(Country_Region %in% top_75_Country  & !grepl('County',`Province_State`) & 
+  filter(Country_Region %in% top_125_Country  & !grepl('County',`Province_State`) & 
            !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)))  %>%
   filter(Last_Update > '2020-03-15') %>%
   group_by(`Country_Region`, Last_Update) %>%
@@ -72,7 +71,9 @@ dat %>%
   arrange(Country_Region) %>%
   ggplot(aes(y=Country_Region,x=Confirmed)) +
   geom_line() +
-  geom_point(shape = 1)
+  geom_point(shape = 1) +
+  coord_flip()+
+  theme(axis.text.x = element_text(angle = 90)) 
 
 # US testing rate normalized vs. confirmed cases
 
@@ -95,8 +96,9 @@ datUS %>%
   mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
          test_per_million = (Rate_Test/Pop)*1000000) %>%
   filter(Last_Update == Sys.Date()-1 |Last_Update == '2020-06-01' |Last_Update == '2020-05-01' |
-           Last_Update == '2020-07-01' | Last_Update =='2020-08-01',
-         test_per_million >0) %>%
+           Last_Update == '2020-07-01' | Last_Update =='2020-08-01'| Last_Update =='2020-09-01'| Last_Update =='2020-10-01',
+         test_per_million >0 & test_per_million <40000,
+         conf_per_million >= 0) %>%
   ggplot(aes(x=conf_per_million,y=test_per_million,color=Province_State)) +
   geom_point() +
   geom_text(aes(x=conf_per_million,y=test_per_million,label=Province_State),nudge_x = 5, nudge_y = 75) +
@@ -104,7 +106,34 @@ datUS %>%
   facet_grid( .~Last_Update) +
   theme(legend.position = "none")
 
-In <- c('Texas', 'Florida', 'Alabama', 'Georgia','California')
+
+datUS %>%
+  filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
+  mutate(Last_Update = date(Last_Update)) %>%
+  group_by(Province_State) %>%
+  mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Rate_Test = People_Tested - lag(People_Tested,default = 0)) %>%
+  mutate(Rate_Confirmed = zoo::rollapply(Rate_Confirmed,5,mean,align='right',fill=0),
+         Rate_Test = zoo::rollapply(Rate_Test,5,mean,align='right',fill=0)) %>%
+  select(Province_State,Last_Update,Confirmed,People_Tested,Rate_Confirmed,Rate_Test) %>%
+  inner_join(select(usStatePopulation,`Geographic Area`,'2019'), by = c('Province_State' = 'Geographic Area')) %>%
+  mutate(`2019` = as.numeric(gsub(",","",`2019`,fixed=TRUE))) %>%
+  rename(Pop = `2019`) %>%
+  ungroup() %>%
+  mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
+         test_per_million = (Rate_Test/Pop)*1000000) %>%
+  filter(Last_Update == Sys.Date()-1,
+         test_per_million >0 & test_per_million <40000,
+         conf_per_million >= 0) %>%
+  ggplot(aes(x=conf_per_million,y=test_per_million,color=Province_State)) +
+  geom_point() +
+  geom_text(aes(x=conf_per_million,y=test_per_million,label=Province_State),nudge_x = 5, nudge_y = 75) +
+  scale_y_continuous(limits = c(0,10000)) +
+  geom_abline(data = rateLines,aes(slope = slope,intercept = intercept),linetype = 2, color = 'grey') +
+  facet_grid( .~Last_Update) +
+  theme(legend.position = "none")
+
+In <- c('Texas', 'Florida', 'Alabama', 'Georgia','California','Louisiana','Mississippi')
 
 datUS %>%
   filter(grepl(paste(In, collapse="|"),Province_State)) %>%
@@ -122,7 +151,8 @@ datUS %>%
   mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
          test_per_million = (Rate_Test/Pop)*1000000) %>%
   filter(Last_Update == Sys.Date()-1 |Last_Update == '2020-06-01' |Last_Update == '2020-05-01' |
-           Last_Update == '2020-07-01' | Last_Update =='2020-08-01',
+           Last_Update == '2020-07-01' | Last_Update =='2020-08-01'| Last_Update =='2020-09-01'| 
+           Last_Update =='2020-10-01',
          test_per_million >0) %>%
   ggplot(aes(x=conf_per_million,y=test_per_million,color=Province_State)) +
   geom_point() +
@@ -130,6 +160,111 @@ datUS %>%
   geom_abline(data = rateLines,aes(slope = slope,intercept = intercept),linetype = 2, color = 'grey') +
   facet_grid( .~Last_Update) +
   theme(legend.position = "none")
+
+### Infection rate plots
+
+dat %>%
+    filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) &
+             !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)) &
+             Last_Update > '2020-03-09') %>%
+    group_by( Last_Update) %>%
+    summarise_if(is.numeric,sum) %>%
+    select(Last_Update,Confirmed,Deaths,Recovered,Existing) %>%
+    mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+           Rate_Deaths = Deaths - lag(Deaths,default = 0),
+           Country_Region = 'USA')%>%
+  
+  ggplot(aes(x = Last_Update))+
+  geom_line(aes(y=Rate_Confirmed, color = "Infections_per_day"))+
+  geom_line(aes(y=Rate_Deaths, color = "Deaths_per_day"))+
+  geom_point(size = I(3), shape = 1, aes(y=Rate_Confirmed, color = "Infections_per_day"))+
+  geom_point(size = I(3), shape = 1,aes(y=Rate_Deaths, color = "Deaths_per_day"))+
+  facet_grid(.~Country_Region) +
+  ylab(label="Count")+
+  xlab(label="Date")+
+  theme(legend.justification=c(1,0), legend.position=c(0.25,0.75))+
+  theme(legend.title=element_text(size=12,face="bold"),
+        legend.background = element_rect(fill='#FFFFFF',
+                                         size=0.5,linetype="solid"),
+        legend.text=element_text(size=10),
+        legend.key=element_rect(colour="#FFFFFF",
+                                fill='#C2C2C2',
+                                size=0.25,
+                                linetype="solid"))+
+  scale_colour_manual("Compartments",
+                      breaks=c("Infections_per_day","Existing","Recovered","Deaths_per_day"),
+                      values=c("green","red","blue","black"))+
+  labs(title = "Coronavirus(2019-nCoV)",
+       subtitle = paste("United States Of America",sep =" "))
+  
+
+
+dat %>%
+  filter(`Country_Region` == 'India'  &
+           
+           Last_Update > '2020-03-09') %>%
+  group_by( Last_Update) %>%
+  summarise_if(is.numeric,sum) %>%
+  select(Last_Update,Confirmed,Deaths,Recovered,Existing) %>%
+  mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+         Country_Region = 'India')%>%
+  mutate(Roll_Rate_Confirmed = zoo::rollmean(Rate_Confirmed,7,mean,align='right',fill=Rate_Confirmed)) %>%
+  ggplot(aes(x = Last_Update))+
+  geom_line(aes(y=Rate_Confirmed, color = "Infections_per_day"))+
+  geom_line(aes(y=Roll_Rate_Confirmed, color = "Rolling_Infrections_per_day"))+
+  geom_point(size = I(3), shape = 1, aes(y=Rate_Confirmed, color = "Infections_per_day"))+
+  #geom_point(size = I(3), shape = 1,aes(y=Roll_Rate_Confirmed, color = "Rolling_Infrections_per_day"))+
+  facet_grid(.~Country_Region) +
+  ylab(label="Count")+
+  xlab(label="Date")+
+  theme(legend.justification=c(1,0), legend.position=c(0.25,0.75))+
+  theme(legend.title=element_text(size=12,face="bold"),
+        legend.background = element_rect(fill='#FFFFFF',
+                                         size=0.5,linetype="solid"),
+        legend.text=element_text(size=10),
+        legend.key=element_rect(colour="#FFFFFF",
+                                fill='#C2C2C2',
+                                size=0.25,
+                                linetype="solid"))+
+  scale_colour_manual("Compartments",
+                      breaks=c("Infections_per_day","Existing","Recovered","Rolling_Infrections_per_day"),
+                      values=c("green","red","blue","black"))+
+  labs(title = "Coronavirus(2019-nCoV)",
+       subtitle = paste("India",sep =" "))
+# Death rate plot  
+dat %>%
+    filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) &
+             !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)) &
+             Last_Update > '2020-03-09') %>%
+    group_by( Last_Update) %>%
+    summarise_if(is.numeric,sum) %>%
+    select(Last_Update,Confirmed,Deaths,Recovered,Existing) %>%
+    mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+           Rate_Deaths = Deaths - lag(Deaths,default = 0),
+           Country_Region = 'USA')%>%
+    
+    ggplot(aes(x = Last_Update))+
+    #geom_line(aes(y=Rate_Confirmed, color = "Infections_per_day"))+
+    geom_line(aes(y=Rate_Deaths, color = "Deaths_per_day"))+
+    #geom_point(size = I(3), shape = 1, aes(y=Rate_Confirmed, color = "Infections_per_day"))+
+    geom_point(size = I(3), shape = 1,aes(y=Rate_Deaths, color = "Deaths_per_day"))+
+    facet_grid(.~Country_Region) +
+    ylab(label="Count")+
+    xlab(label="Date")+
+    theme(legend.justification=c(1,0), legend.position=c(0.25,0.75))+
+    theme(legend.title=element_text(size=12,face="bold"),
+          legend.background = element_rect(fill='#FFFFFF',
+                                           size=0.5,linetype="solid"),
+          legend.text=element_text(size=10),
+          legend.key=element_rect(colour="#FFFFFF",
+                                  fill='#C2C2C2',
+                                  size=0.25,
+                                  linetype="solid"))+
+    scale_colour_manual("Compartments",
+                        breaks=c("Infections_per_day","Existing","Recovered","Deaths_per_day"),
+                        values=c("green","red","blue","black"))+
+    labs(title = "Coronavirus(2019-nCoV)",
+         subtitle = paste("United States Of America",sep =" "))  
 
 
 # Plots of various countries and states
@@ -174,6 +309,10 @@ plotDat('US', 'North Carolina')
 plotDatPhase('US', 'North Carolina')
 plotDat('US', 'South Carolina')
 plotDatPhase('US', 'South Carolina')
+plotDat('US', 'North Dakota')
+plotDatPhase('US', 'North Dakota')
+plotDat('US', 'South Dakota')
+plotDatPhase('US', 'South Dakota')
 # USA
 plotDatContryUSA()
 
@@ -343,7 +482,7 @@ dat %>%
   labs(title = "Wuhan Coronavirus(2019-nCoV)",
        subtitle = "Confirmed Cases Shanghai and Beijing")
 
-#USA Brazil
+#USA Brazil India
 
 rbind(
   dat %>%
@@ -355,6 +494,16 @@ rbind(
     mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
            Rate_Deaths = Deaths - lag(Deaths,default = 0),
            Country_Region = 'Brazil'),
+  
+  dat %>%
+    filter(Country_Region == 'India',
+           Last_Update > '2020-04-01') %>%
+    group_by(Last_Update) %>%
+    summarise_if(is.numeric,sum) %>%
+    select(Last_Update,Confirmed,Deaths,Recovered,Existing) %>%
+    mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+           Rate_Deaths = Deaths - lag(Deaths,default = 0),
+           Country_Region = 'India'),
   
   
   dat %>%
@@ -394,7 +543,7 @@ rbind(
                       breaks=c("Infected","Existing","Recovered","Deaths"),
                       values=c("green","red","blue","black"))+
   labs(title = "Coronavirus(2019-nCoV)",
-       subtitle = paste("United States Of America",sep =" "))
+       subtitle = paste("United States Of America, India, Brazil",sep =" "))
 
 # Look only at deaths
 
@@ -457,7 +606,17 @@ rbind(
     select(Last_Update,Confirmed,Deaths,Recovered,Existing) %>%
     mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
            Rate_Deaths = Deaths - lag(Deaths,default = 0),
-           Country_Region = 'USA')
+           Country_Region = 'USA'),
+  
+  dat %>%
+    filter(Country_Region == 'India',
+           Last_Update > '2020-04-01') %>%
+    group_by(Last_Update) %>%
+    summarise_if(is.numeric,sum) %>%
+    select(Last_Update,Confirmed,Deaths,Recovered,Existing) %>%
+    mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
+           Rate_Deaths = Deaths - lag(Deaths,default = 0),
+           Country_Region = 'India')
 ) %>%
   
   ggplot(aes(x = Last_Update))+
@@ -852,7 +1011,7 @@ plot.harmonic <- function(Xk, i, ts, acq.freq, color="red") {
 
 datChiSq <-
   dat %>% 
-  filter(Country_Region %in% top_20_Country & !grepl('County',`Province_State`) & 
+  filter(Country_Region %in% top_125_Country & !grepl('County',`Province_State`) & 
            !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1)))  %>%
   filter(Last_Update == max(Last_Update)) %>%
   group_by(`Country_Region`) %>%
@@ -1428,62 +1587,5 @@ datUS %>%
          test_per_million = (Rate_Test/Pop)*1000000) %>%
   filter(Last_Update > '2020-05-01')
 ###########################################################################################################
-
-
-#  nomalized by state population 
-
-rateLines <- data.table(slope = c(2,5,10,20,50,100),intercept = c(0,0,0,0,0,0))
-
-
-#  Confirmed per million vs. test per million, rolling seven day average.
-datUS %>%
-  filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
-  mutate(Last_Update = date(Last_Update)) %>%
-  group_by(Province_State) %>%
-  mutate(Rate_Confirmed = Confirmed - lag(Confirmed,default = 0),
-         Rate_Test = People_Tested - lag(People_Tested,default = 0)) %>%
-  mutate(Rate_Confirmed = zoo::rollapply(Rate_Confirmed,5,mean,align='right',fill=0),
-         Rate_Test = zoo::rollapply(Rate_Test,5,mean,align='right',fill=0)) %>%
-  select(Province_State,Last_Update,Confirmed,People_Tested,Rate_Confirmed,Rate_Test) %>%
-  inner_join(select(usStatePopulation,`Geographic Area`,'2019'), by = c('Province_State' = 'Geographic Area')) %>%
-  mutate(`2019` = as.numeric(gsub(",","",`2019`,fixed=TRUE))) %>%
-  rename(Pop = `2019`) %>%
-  ungroup() %>%
-  mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
-         test_per_million = (Rate_Test/Pop)*1000000) %>%
-  filter(Last_Update == Sys.Date()-1 |Last_Update == '2020-06-01' |Last_Update == '2020-05-01' |Last_Update == '2020-07-01',
-         test_per_million >0) %>%
-  ggplot(aes(x=conf_per_million,y=test_per_million,color=Province_State)) +
-  geom_point() +
-  geom_text(aes(x=conf_per_million,y=test_per_million,label=Province_State),nudge_x = 5, nudge_y = 75) +
-  geom_abline(data = rateLines,aes(slope = slope,intercept = intercept),linetype = 2, color = 'grey') +
-  facet_grid( .~Last_Update) +
-  theme(legend.position = "none")
-
-#####
-# Plot by all states confirmed cases
-#####
-
-datUS %>%
-  filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
-  mutate(Existing = Confirmed - Deaths - Recovered) %>%
-  arrange(Province_State) %>%
-  ggplot(aes(y=Province_State,x=Confirmed)) +
-  geom_line() +
-  geom_point(shape = 1)
-
-
-datUS %>%
-  filter(!grepl(paste(notIn, collapse="|"),Province_State)) %>%
-  inner_join(select(usStatePopulation,`Geographic Area`,'2019'), by = c('Province_State' = 'Geographic Area')) %>%
-  mutate(`2019` = as.numeric(gsub(",","",`2019`,fixed=TRUE))) %>%
-  rename(Pop = `2019`) %>%
-  ungroup() %>%
-  mutate(conf_per_million = (Confirmed/Pop)*1000000,
-         deaths_per_million = (Deaths/Pop)*1000000) %>%
-  ggplot(aes(y=Province_State,x=conf_per_million)) +
-  geom_line() +
-  geom_point(shape = 1)
-
 
 
