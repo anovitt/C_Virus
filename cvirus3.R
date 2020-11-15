@@ -96,7 +96,8 @@ datUS %>%
   mutate(conf_per_million = (Rate_Confirmed/Pop)*1000000,
          test_per_million = (Rate_Test/Pop)*1000000) %>%
   filter(Last_Update == Sys.Date()-1 |Last_Update == '2020-06-01' |Last_Update == '2020-05-01' |
-           Last_Update == '2020-07-01' | Last_Update =='2020-08-01'| Last_Update =='2020-09-01'| Last_Update =='2020-10-01',
+           Last_Update == '2020-07-01' | Last_Update =='2020-08-01'| Last_Update =='2020-09-01'|
+           Last_Update =='2020-10-01'| Last_Update =='2020-11-01',
          test_per_million >0 & test_per_million <40000,
          conf_per_million >= 0) %>%
   ggplot(aes(x=conf_per_million,y=test_per_million,color=Province_State)) +
@@ -242,11 +243,12 @@ dat %>%
   #geom_point(size = I(3), shape = 1, aes(y=Rate_Confirmed, color = Province_State))+
   #geom_point(size = I(3), shape = 1,aes(y=Roll_Rate_Confirmed, color = "Rolling_Infrections_per_day"))+
   facet_wrap(vars(Province_State)) +
-  ylab(label="Infection Rate")+
+  ylab(label="Death Rate")+
   xlab(label="Date")+
   theme(legend.position = "none") +
   labs(title = "Coronavirus(2019-nCoV)",
        subtitle = paste("United States Of America",sep =" "))
+
 # Normalized by state population
 dat %>%
   filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) &
@@ -271,7 +273,7 @@ dat %>%
   #geom_point(size = I(3), shape = 1, aes(y=Rate_Confirmed, color = Province_State))+
   #geom_point(size = I(3), shape = 1,aes(y=Roll_Rate_Confirmed, color = "Rolling_Infections_per_day"))+
   facet_wrap(vars(Province_State)) +
-  ylab(label="Normalize Rolling Avgerage Confirmed Cases Rate Per Day Per million")+
+  ylab(label="Normalized Rolling Avgerage Confirmed Cases Rate Per Day Per million")+
   xlab(label="Date")+
   theme(legend.position = "none") +
   labs(title = "Coronavirus(2019-nCoV)",
@@ -301,7 +303,7 @@ dat %>%
   #geom_point(size = I(3), shape = 1, aes(y=Rate_Confirmed, color = Province_State))+
   #geom_point(size = I(3), shape = 1,aes(y=Roll_Rate_Confirmed, color = "Rolling_Infrections_per_day"))+
   facet_wrap(vars(Province_State)) +
-  ylab(label="Normalize Rolling Avgerage Death Rate Per Day Per million")+
+  ylab(label="Normalize Rolling Avgerage Death Rate Per Day Per Million")+
   xlab(label="Date")+
   theme(legend.position = "none") +
   labs(title = "Coronavirus(2019-nCoV)",
@@ -519,65 +521,6 @@ dat %>%
   labs(title = "Wuhan Coronavirus(2019-nCoV)",
        subtitle = "Confirmed Cases Shanghai and Beijing")
 
-
-######
-# lat lon for the provinces
-
-provinceCoord <- data.table(Province = c('Shanghai',
-'Beijing','Guangdong','Hubei','Tianjin','Chongqing',
-'Liaoning','Sichuan','Jiangsu','Guizhou','Heilongjiang',
-'Jilin','Zhejiang','Yunnan','Shanxi','Shandong',
-'Fujian','Hunan','Gansu','Hebei','Guangxi',
-'Xinjiang','Hainan','Anhui','Inner Mongolia',
-'Qinghai','Ningxia','Tibet','Shaanxi','Henan','Jiangxi'
-),
-lng = c(121.458056, 116.388869,113.25,114.266667,117.176667,106.552778,123.432778,
-        104.066667,118.777778,106.716667,126.65,125.322778,120.161419,102.718333,
-        112.560278,116.997222,119.306111,112.966667,103.839868,114.478611,108.316667,
-        87.630506,110.341667,117.280833,111.652222,101.75739,106.273056,91.1,108.928611,
-        113.648611, 115.883333),
-lat = c(31.222222, 39.928819,23.116667, 30.583333,39.142222,29.562778,41.792222,30.666667,
-        32.061667,26.583333,45.75,43.88,30.29365,25.038889,37.869444,36.668333,26.061389,
-        28.2,36.057006,38.041389,22.816667,43.807347,20.045833,31.863889, 40.810556,
-        36.625541,38.468056,29.65,34.258333,34.757778,28.683333))
-
-dat %>% 
-  filter(grepl('China',`Country_Region`))  %>%
-  group_by(`Province_State`)  %>% 
-  filter(`Last_Update` == max(`Last_Update`)) %>%
-  #left_join(provinceCoord, by = c('Province_State' = 'Province')) %>%
-  select(`Province_State`,lng,lat,Confirmed) %>%
-  leaflet() %>%
-  addTiles() %>%
-  addCircles(lng = ~lng, lat = ~lat, weight = 1,
-             radius = ~log(Confirmed) * 20000, 
-             popup = ~`Province_State`,
-             label = ~Confirmed) %>%
-  addPopups(lng=121.4, lat=50, paste(sep = "<br/>", "Scroll over the circle to see the confirmed count","Click the circle to see the provice name"),
-            options = popupOptions(closeButton = FALSE)) %>%
-  addPopups(lng=90, lat=50, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Confirmed Infection Counts By Province",max(dat$`Last Update`)),
-            options = popupOptions(closeButton = FALSE))
-
-
-## existing cases map
-
-dat %>% 
-  filter(grepl('China',`Country_Region`))  %>%
-  group_by(`Province_State`)  %>% 
-  filter(`Last_Update` == max(`Last_Update`)) %>%
-  #left_join(provinceCoord, by = c('Province_State' = 'Province')) %>%
-  select(`Province_State`,lng,lat,Existing) %>%
-  leaflet() %>%
-  addTiles() %>%
-  addCircles(lng = ~lng, lat = ~lat, weight = 1,
-             radius = ~log(Existing) * 20000, 
-             popup = ~`Province_State`,
-             label = ~Existing) %>%
-  addPopups(lng=121.4, lat=50, paste(sep = "<br/>", "Scroll over the circle to see the existing count","Click the circle to see the provice name"),
-            options = popupOptions(closeButton = FALSE)) %>%
-  addPopups(lng=90, lat=50, paste(sep = "<br/>", "<b>Coronavirus(2019-nCoV</b>","Existing Infection Counts By Province",max(dat$`Last Update`)),
-            options = popupOptions(closeButton = FALSE))
-
 # Chi Square Test for Recovered cases and deaths
 
 datChiSq <-
@@ -602,6 +545,25 @@ round(Xsq$expected,0) # expected counts under the null
 Xsq$residuals  # Pearson residuals
 Xsq$stdres     # standardized residuals
 round(Xsq$observed[1,]/Xsq$observed[3,],3)
+
+as.data.table(t(M)) %>%
+  pivot_wider(names_from = 'Outcome', values_from = 'N') %>%
+  mutate(D_Rate = Deaths / Confirmed) %>%
+  arrange(desc(D_Rate)) %>%
+  ggplot(aes(x = Country, y = D_Rate)) +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 90))
+
+as.data.table(t(M)) %>%
+  pivot_wider(names_from = 'Outcome', values_from = 'N') %>%
+  mutate(D_Rate = Deaths / Confirmed) %>%
+  arrange(desc(D_Rate))
+
+as.data.table(t(M)) %>%
+  pivot_wider(names_from = 'Outcome', values_from = 'N') %>%
+  mutate(D_Rate = Deaths / Confirmed) %>%
+  summarise(avg_d_rate = mean(D_Rate),
+            med_d_rate = median(D_Rate))
 
 # Chi square test for US states
 
@@ -628,8 +590,19 @@ as.data.table(t(M)) %>%
   mutate(D_Rate = Deaths / Confirmed) %>%
   ggplot(aes(x = Country, y = D_Rate)) +
   geom_point() +
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab(label = 'State')
 
+as.data.table(t(M)) %>%
+  pivot_wider(names_from = 'Outcome', values_from = 'N') %>%
+  mutate(D_Rate = Deaths / Confirmed) %>%
+  arrange(desc(D_Rate))
+
+as.data.table(t(M)) %>%
+  pivot_wider(names_from = 'Outcome', values_from = 'N') %>%
+  mutate(D_Rate = Deaths / Confirmed) %>%
+  summarise(avg_d_rate = mean(D_Rate),
+            med_d_rate = median(D_Rate))
 
 #########################
 # Estimate the number of people in a room to have 50% of a person confirmed
@@ -690,12 +663,3 @@ ggplot(data = probContact, aes(x=x,y=value,color = variable))+
   geom_line() +
   geom_hline(yintercept = 0.5)+
   geom_vline(xintercept = c(probContact[value >= 0.499 & value <= 0.501,max(x)],probContact[value >= 0.499 & value <= 0.501,min(x)]))
-
-probMichian2 =
-  dat %>% 
-  filter(`Country_Region` == 'US' & !grepl('County',`Province_State`) & !grepl("^[[:upper:]]+$",str_sub(`Province_State`,-2,-1))) %>%
-  filter(Province_State == 'Michigan') %>%
-  group_by(Last_Update ) %>%
-  summarise(total_confirmed = sum(Confirmed),
-            total_existing = sum(Existing))
-

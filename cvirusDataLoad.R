@@ -162,9 +162,16 @@ datFluAll <-
 files<-list.files("R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports_us/",full.names=TRUE)
 datUS <- data.table()
 
+cols <- c("Province_State", "Country_Region","Last_Update" ,"Lat" , "Long_" ,           
+           "Confirmed" ,"Deaths","Recovered","Active","FIPS",                
+         "Incident_Rate","People_Tested","People_Hospitalized","Case_Fatality_Ratio", "UID",                 
+           "ISO3", "Testing_Rate", "Hospitalization_Rate")
+
 for(i in 1:(length(files)-1)){
   
   data.temp<-fread(files[i],header =TRUE)
+  
+  names(data.temp)
   
   #data.temp = select(data.temp, `Province_State`, `Country_Region`,`Last_Update`, `Confirmed`, `Deaths`, `Recovered` )
   #names(data.temp) <- c('Province_State', 'Country_Region','Last_Update', 'Confirmed', 'Deaths', 'Recovered' )
@@ -181,9 +188,11 @@ for(i in 1:(length(files)-1)){
     filter(!grepl('Guam',Province_State) | !grepl('Princess',Province_State) | !grepl('Island',Province_State)) %>%
     filter(Province_State != 'Recovered' ) %>%
     as.data.table()
+  
+  names(data.temp) <- cols
+  
   datUS<-rbind(datUS,data.temp)
 }
-
 
 # Plot Functions
 
@@ -404,7 +413,7 @@ plotDatContryUSA <- function(){
     geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
     geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
     geom_point(size = I(3), shape = 1,aes(y=Deaths, color = "Deaths"))+
-    geom_hline(yintercept = seq(from = 100000, to = 6000000, by = 1000000))+
+    geom_hline(yintercept = seq(from = 100000, to = 12000000, by = 1000000))+
     
     ylab(label="Count")+
     xlab(label="Date")+
