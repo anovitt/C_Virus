@@ -29,6 +29,18 @@ for(i in 1:(length(files)-1)){
   dat<-rbind(dat,data.temp)
 }
 
+dat =
+  dat %>%
+  arrange(Last_Update)
+
+dat
+
+# State Data
+
+datSate <- fread(files[length(files)-1],header =TRUE)
+
+
+
 ########################## USA Reports
 
 files<-list.files("R/2019-coronavirus-dataset-01212020-01262020/csse_covid_19_daily_reports_us/",full.names=TRUE)
@@ -56,6 +68,11 @@ for(i in 1:(length(files)-1)){
     as.data.table()
   datUS<-rbind(datUS,data.temp)
 }
+
+datUS =
+datUS %>%
+  arrange(Last_Update)
+
 
 # sub set and add sub set US daily data from after april 21.
 
@@ -193,6 +210,10 @@ for(i in 1:(length(files)-1)){
   
   datUS<-rbind(datUS,data.temp)
 }
+
+datUS =
+  datUS %>%
+  arrange(Last_Update)
 
 # Plot Functions
 
@@ -413,7 +434,7 @@ plotDatContryUSA <- function(){
     geom_point(size = I(3), shape = 1,aes(y=Existing, color = "Existing"))+
     geom_point(size = I(3), shape = 1,aes(y=Recovered, color = "Recovered"))+
     geom_point(size = I(3), shape = 1,aes(y=Deaths, color = "Deaths"))+
-    geom_hline(yintercept = seq(from = 100000, to = 12000000, by = 1000000))+
+    geom_hline(yintercept = seq(from = 100000, to = 35000000, by = 1000000))+
     
     ylab(label="Count")+
     xlab(label="Date")+
